@@ -3,18 +3,18 @@ import pathlib
 import pandas as pd
 from fiona.ogrext import DriverError
 
-from data.DataObject import DataObject
+from .DataObject import DataObject
 import geopandas as gpd
 from pyogrio.errors import DataSourceError
 from pyproj import CRS, Transformer
 import shapely
 import folium
 
-from data.constants import AFDC_API_KEY_PATH, MILES_TO_METERS_FACTOR, METERS_TO_MILES_FACTOR
+from .constants import MILES_TO_METERS_FACTOR, METERS_TO_MILES_FACTOR
 
 TEMP_CRS = "EPSG:6423"
 
-class AfdcApiDataObject(DataObject):
+class AFDCApiDataObject(DataObject):
     data_object = gpd.GeoDataFrame
     def __init__(self, source, cache_path, api_key_path):
         # TODO: ping api url to make sure it works
@@ -42,7 +42,6 @@ class AfdcApiDataObject(DataObject):
         with open(self.api_key_path, "r") as f:
             api_key = f.readline()
         url = f"{self.source}?api_key={api_key}&latitude={latitude}&longitude={longitude}&radius={radius}&fuel_type=ELEC&limit={limit_field}"
-        print(url)
         self.num_calls += 1
         return gpd.read_file(url)
 
@@ -80,7 +79,6 @@ class AfdcApiDataObject(DataObject):
             load_area_centroid_lat_lon.x,
             load_area_max_distance * METERS_TO_MILES_FACTOR,
         )
-        print(gdf_afdc_response)
         self.data_object = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)].copy()
         #TODO: fix the below function that adds caching
         """"# Check cache

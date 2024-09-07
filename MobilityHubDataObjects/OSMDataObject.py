@@ -4,7 +4,9 @@ import osmnx as ox
 import shapely
 import folium
 
-class OSMDataObject():
+from .DataObject import DataObject
+
+class OSMDataObject(DataObject):
     data_object = gpd.GeoDataFrame
     def __init__(self, cache_path: (str | pathlib.Path), tags): # TODO: not sure of type for tags so using any
         self.cache_path = cache_path

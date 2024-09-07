@@ -6,7 +6,7 @@ import shapely
 from pyproj import CRS
 import folium
 
-from data import DataObject
+from .DataObject import DataObject
 
 
 class FTAFacilityInventoryDataObject(DataObject):
@@ -60,7 +60,6 @@ class FTAFacilityInventoryDataObject(DataObject):
         fta_popup = folium.GeoJsonPopup(
             fields=["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
         )
-        print(self.data_object)
         fta_geojson = folium.GeoJson(
             self.data_object,
             popup=fta_popup
