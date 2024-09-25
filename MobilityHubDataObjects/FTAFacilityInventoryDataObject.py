@@ -1,10 +1,13 @@
 import pathlib
 
+import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
 from pyproj import CRS
 import folium
+
+from MobilityHubDataObjects.utils import basic_circle_marker
 
 from .DataObject import DataObject
 
@@ -58,10 +61,14 @@ class FTAFacilityInventoryDataObject(DataObject):
 
     def get_folium_plot(self) -> folium.GeoJson:
         fta_popup = folium.GeoJsonPopup(
-            fields=["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
+            fields=list(np.intersect1d(
+                ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"],
+                self.data_object.index
+            ))
         )
         fta_geojson = folium.GeoJson(
             self.data_object,
+            marker=basic_circle_marker("light_blue"),
             popup=fta_popup
         )
         return fta_geojson

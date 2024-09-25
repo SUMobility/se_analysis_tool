@@ -1,0 +1,88 @@
+import folium
+from pyproj import Transformer, Geod
+import numpy as np
+import shapely
+import datetime as dt
+
+def basic_circle_marker(fillColor: str, **kwargs) -> folium.CircleMarker:
+    kwargs_to_pass = dict(kwargs)
+    kwargs_to_pass["color"] = fillColor
+    kwargs_to_pass["fillColor"] = fillColor
+    if "fillOpacity" not in kwargs_to_pass:
+        kwargs_to_pass["fillOpacity"] = 0.8
+    if "radius" not in kwargs_to_pass:
+        kwargs_to_pass["radius"] = 5
+    if "color" in kwargs:
+        kwargs_to_pass["fillColor"] = kwargs["color"]
+    return folium.CircleMarker(**kwargs_to_pass)
+
+def transform_shapely_geometry(
+    from_crs: (str | int),
+    to_crs: (str | int),
+    geom: (shapely.Geometry)
+):
+    transformer = Transformer.from_crs(from_crs, to_crs, always_xy=True)
+    return shapely.ops.transform(
+        transformer.transform,
+        geom
+    )
+
+def safe_is_na(value: object) -> bool:
+     return value is None or (type(value) == float and np.isnan(value))
+
+def get_str_or_na(value : (str | float | None)) -> (str | float):
+    if type(value) != str and (np.isnan(value) or value is None):
+            return np.nan
+    return str(value)
+
+def yes_no_to_bool(value: (str | float | None)) -> (str | float):
+    processed = get_str_or_na(value)
+    if safe_is_na(processed):
+         return np.nan
+    elif value == "yes":
+         return True
+    elif value == "no":
+         return False
+    else:
+         return np.nan
+
+def filter_two_corresponding_arrays(reference, corresponding, other):
+    assert len(corresponding) == len(other)
+    print("r",reference)
+    print("c", corresponding)
+    print("o", other)
+    corresponding_other_map = {corresponding[i]: other[i] for i in range(len(corresponding))}
+    intersected = np.intersect1d(np.array(reference), np.array(corresponding))
+    other_filtered = [corresponding_other_map[i] for i in intersected]
+    return tuple(intersected), tuple(other_filtered)
+
+def time_to_int(time: dt.time):
+    return int(time.hour * 3600 + time.minute * 60 + time.second + time.microsecond/1000)
+
+point_or_poly = shapely.Point | shapely.MultiPolygon | shapely.Polygon | shapely.MultiPolygon
+def small_geodesic_polygons_to_points(
+    geom: point_or_poly,
+    max_area_square_meters: int,
+    ellipsoid: str = "WGS84"
+) -> point_or_poly:
+    #print(geom.wkt)
+    assert type(geom) in (shapely.Point, shapely.MultiPolygon, shapely.Polygon, shapely.MultiPolygon)
+    # If the geometry is not a polygon, return
+    if type(geom) is shapely.Point or type(geom) is shapely.MultiPoint:
+         return geom
+    
+    # Calculate total area of the polygon or multipolygon
+    geod = Geod(ellps=ellipsoid)
+    def get_geodesic_area(geom: shapely.Polygon):
+         return abs(geod.geometry_area_perimeter(geom)[0])
+    area = 0
+    if type(geom) is shapely.Polygon:
+        area = get_geodesic_area(geom)
+    if type(geom) is shapely.MultiPolygon:
+        area = sum(map(get_geodesic_area, geom.geoms))
+    # If the polygon is small, return it as a point
+    if area < max_area_square_meters:
+         return geom.centroid
+    # Otherwise, return the original object
+    return geom
+

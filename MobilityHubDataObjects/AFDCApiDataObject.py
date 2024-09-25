@@ -3,6 +3,8 @@ import pathlib
 import pandas as pd
 from fiona.ogrext import DriverError
 
+from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays
+
 from .DataObject import DataObject
 import geopandas as gpd
 from pyogrio.errors import DataSourceError
@@ -42,19 +44,23 @@ class AFDCApiDataObject(DataObject):
         with open(self.api_key_path, "r") as f:
             api_key = f.readline()
         url = f"{self.source}?api_key={api_key}&latitude={latitude}&longitude={longitude}&radius={radius}&fuel_type=ELEC&limit={limit_field}"
+        print(url)
         self.num_calls += 1
         return gpd.read_file(url)
 
     def get_folium_plot(self) -> folium.GeoJson:
+        intended_fields = ["station_name", "street_address", "ev_network", "ev_network_web"]
+        intended_aliases = ["Name", "Address", "Network", "Website"]
+        fields, aliases = filter_two_corresponding_arrays(self.data_object.columns, intended_fields, intended_aliases)
         afdc_popup = folium.GeoJsonPopup(
-            fields=["station_name", "street_address", "ev_network", "ev_network_web"],
-            aliases=["Name", "Address", "Network", "Website"],
+            fields=fields,
+            aliases=aliases,
             localize=True,
             labels=True,
         )
         afdc_geojson = folium.GeoJson(
             self.data_object[["station_name", "street_address", "ev_network", "ev_network_web", "geometry"]],
-            marker=folium.Marker(icon=folium.Icon(icon='star')),
+            marker=basic_circle_marker("blue"),
             popup=afdc_popup,
         )
         return afdc_geojson
@@ -68,12 +74,19 @@ class AFDCApiDataObject(DataObject):
         )
         load_area_centroid_lat_lon = shapely.centroid(load_area)
         load_area_centroid = shapely.centroid(load_area_transformed)
-        load_area_max_distance = max(
-            [
-                shapely.geometry.LineString([load_area_centroid, v]).length
-                for v in load_area_transformed.exterior.coords
-            ]
-        )
+        def get_max_distance_from_centroid(geom: shapely.Polygon) -> float:
+            return max(
+                [
+                    shapely.geometry.LineString([load_area_centroid, v]).length
+                    for v in geom.exterior.coords
+                ]
+            )
+        load_area_max_distance = -1
+        if type(load_area_transformed) is shapely.Polygon:
+            load_area_max_distance = get_max_distance_from_centroid(load_area_transformed)
+            print(load_area_max_distance)
+        else:
+            load_area_max_distance = max(map(get_max_distance_from_centroid, load_area_transformed.geoms))
         gdf_afdc_response = self._call_afdc_api_ev_chargers(
             load_area_centroid_lat_lon.y,
             load_area_centroid_lat_lon.x,
