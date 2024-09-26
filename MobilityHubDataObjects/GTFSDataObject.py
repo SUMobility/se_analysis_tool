@@ -91,12 +91,14 @@ class GTFSDataObject(DataObject):
                 index_col=0
             )
         except FileNotFoundError:
+            print("INFO: Did not load feeds metadata, generating a new file")
             df_feeds_metadata = pd.DataFrame(
                 columns=feeds_columns,
             )
         try:
             gdf_cached_frequent_stops = gpd.read_file(stops_geometry_path)
         except fiona.errors.DriverError:
+            print("INFO: Did not load stops metadata, generating a new file")
             gdf_cached_frequent_stops = gpd.GeoDataFrame(
                 columns=["agency_name", "agency_id"]
             )
@@ -120,11 +122,12 @@ class GTFSDataObject(DataObject):
                 cached_feed_metadata = df_feeds_metadata.loc[feed_id]
                 cached_last_downloaded = dt.datetime.fromisoformat(cached_feed_metadata["last_fetched"])
                 cached_end_of_life = dt.datetime.fromisoformat(cached_feed_metadata["last_valid_date"])
+                print(cached_last_downloaded, cached_end_of_life)
                 cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
                 assert not safe_is_na(cached_last_downloaded) and not safe_is_na(cached_end_of_life) and not safe_is_na(cached_fetch_status)
                 if (
                     ((dt.datetime.now(tz=dt.timezone.utc) - cached_last_downloaded) <= self.max_transitland_cache_life)
-                    and (cached_end_of_life < dt.datetime.today())
+                    and (cached_end_of_life >= dt.datetime.today())
                 ):
                     download_new_file = False
             if download_new_file:
@@ -301,12 +304,13 @@ class GTFSDataObject(DataObject):
             fields=fields,
             alias=aliases,
         )
+        max_sqrt_score = np.percentile(np.sqrt(self.gdf_all_frequent_stops["score"]), 98)
         gtfs_geojson = folium.GeoJson(
             self.gdf_all_frequent_stops,
             popup=gtfs_popup,
-            marker=basic_circle_marker("dark_blue", radius=2.5),
+            marker=basic_circle_marker("orange"),
             style_function = lambda x: {
-                "radius": x["properties"]["score"]/10 * 5
+                "radius": np.sqrt(x["properties"]["score"])/max_sqrt_score * 5
             }
         )
         return gtfs_geojson

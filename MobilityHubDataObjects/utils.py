@@ -60,14 +60,15 @@ def filter_two_corresponding_arrays(reference, corresponding, other):
 def time_to_int(time: dt.time):
     return int(time.hour * 3600 + time.minute * 60 + time.second + time.microsecond/1000)
 
-point_or_poly = shapely.Point | shapely.MultiPolygon | shapely.Polygon | shapely.MultiPolygon
+point_or_poly = shapely.Point | shapely.MultiPolygon | shapely.Polygon | shapely.MultiPolygon | shapely.LineString
 def small_geodesic_polygons_to_points(
     geom: point_or_poly,
     max_area_square_meters: int,
     ellipsoid: str = "WGS84"
 ) -> point_or_poly:
     #print(geom.wkt)
-    assert type(geom) in (shapely.Point, shapely.MultiPolygon, shapely.Polygon, shapely.MultiPolygon)
+    print(type(geom))
+    assert type(geom) in (shapely.Point, shapely.MultiPolygon, shapely.Polygon, shapely.MultiPolygon, shapely.LineString)
     # If the geometry is not a polygon, return
     if type(geom) is shapely.Point or type(geom) is shapely.MultiPoint:
          return geom
@@ -77,7 +78,7 @@ def small_geodesic_polygons_to_points(
     def get_geodesic_area(geom: shapely.Polygon):
          return abs(geod.geometry_area_perimeter(geom)[0])
     area = 0
-    if type(geom) is shapely.Polygon:
+    if type(geom) in [shapely.Polygon, shapely.LineString]:
         area = get_geodesic_area(geom)
     if type(geom) is shapely.MultiPolygon:
         area = sum(map(get_geodesic_area, geom.geoms))
