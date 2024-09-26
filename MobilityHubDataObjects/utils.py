@@ -1,19 +1,20 @@
 import folium
 from pyproj import Transformer, Geod
 import numpy as np
+import requests
 import shapely
 import datetime as dt
 
 def basic_circle_marker(fillColor: str, **kwargs) -> folium.CircleMarker:
     kwargs_to_pass = dict(kwargs)
-    kwargs_to_pass["color"] = fillColor
+    kwargs_to_pass["color"] = "black"
     kwargs_to_pass["fillColor"] = fillColor
     if "fillOpacity" not in kwargs_to_pass:
-        kwargs_to_pass["fillOpacity"] = 0.8
+        kwargs_to_pass["fillOpacity"] = 1
     if "radius" not in kwargs_to_pass:
         kwargs_to_pass["radius"] = 5
-    if "color" in kwargs:
-        kwargs_to_pass["fillColor"] = kwargs["color"]
+    if "weight" not in kwargs_to_pass:
+        kwargs_to_pass["weight"] = 0.25
     return folium.CircleMarker(**kwargs_to_pass)
 
 def transform_shapely_geometry(
@@ -86,3 +87,17 @@ def small_geodesic_polygons_to_points(
     # Otherwise, return the original object
     return geom
 
+def download_json_safely(url: str): #TODO: consider moving to utils.oy
+    r = requests.get(url)
+    try:
+        r.raise_for_status()
+    except requests.HTTPError as e:
+        print(f"Error downloading {url}:")
+        print(e)
+        return None
+    try:
+        return r.json()
+    except requests.JSONDecodeError:
+        print(f"URL {url} did not lead to a valid JSON file. Output was:")
+        print(r.text())
+        return None

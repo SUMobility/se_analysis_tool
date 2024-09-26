@@ -9,7 +9,8 @@ class DataObject(ABC):
     @abstractmethod
     def load_data(
         self,
-        load_area: [shapely.MultiPolygon | shapely.Polygon | None]
+        load_area: (shapely.MultiPolygon | shapely.Polygon),
+        load_area_crs: int = 4326 
     ) -> None:
         pass
 

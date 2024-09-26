@@ -12,15 +12,16 @@ import hashlib
 import pathlib
 import subprocess
 
-from MobilityHubDataObjects.FeedWrapper import FeedWrapper
+from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
-from MobilityHubDataObjects.constants import GEOGRAPHIC_CRS
+from MobilityHubDataObjects.constants import GEODESIC_CRS
 
 class GTFSDataObject(DataObject):
 
     df_feeds_metadata = None
     load_area = None
     gdf_all_frequent_stops = gpd.GeoDataFrame()
+    data_loaded = False
 
     def __init__(
         self,
@@ -29,7 +30,7 @@ class GTFSDataObject(DataObject):
         max_transitland_cache_life: dt.timedelta,
         time_start: dt.time,
         time_end: dt.time,
-        min_headway: int, #TODO: this should be min headway, and we should be using the best not the worst headway for each stop!
+        min_headway: int, 
         api_key_path: str
     ) -> None:
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
@@ -46,7 +47,15 @@ class GTFSDataObject(DataObject):
     def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
         MAX_RESPONSES_PER_PAGE = 100
         MAX_CHUNK_SIZE = 65536
-        load_area_transformed = transform_shapely_geometry(load_area_crs, GEOGRAPHIC_CRS, load_area)
+        def score_stop(headway_dict):
+            if safe_is_na(headway_dict):
+                return np.nan
+            score = 0
+            for headway in headway_dict.values():
+                # weird fugly sigmoid just as a demo
+                score += -10 * (1 / (1 + np.e ** (-(headway - 17)/5))) + 10.3229
+            return score
+        load_area_transformed = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
         transitland_json = {}
         # Query Transitland
         #TODO: needs to loop until we are sure each file is downloaded
@@ -113,8 +122,6 @@ class GTFSDataObject(DataObject):
                 cached_end_of_life = dt.datetime.fromisoformat(cached_feed_metadata["last_valid_date"])
                 cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
                 assert not safe_is_na(cached_last_downloaded) and not safe_is_na(cached_end_of_life) and not safe_is_na(cached_fetch_status)
-                print(dt.datetime.now(tz=dt.timezone.utc) - cached_last_downloaded)
-                print(cached_last_downloaded)
                 if (
                     ((dt.datetime.now(tz=dt.timezone.utc) - cached_last_downloaded) <= self.max_transitland_cache_life)
                     and (cached_end_of_life < dt.datetime.today())
@@ -192,7 +199,7 @@ class GTFSDataObject(DataObject):
                 #TODO: figure out feed object to get agency name and url and run feedutils functions without needing to load a new feed each time
                 # Process frequent stops
                 try:
-                    feed_object = FeedWrapper(feed_output_path)
+                    feed_object = GTFSFeedWrapper(feed_output_path)
                 except Exception as e:
                     print(f"The feed for {feed_id} downloaded successfully, but processing it gave the following fatal error:")
                     print(str(e))
@@ -235,6 +242,7 @@ class GTFSDataObject(DataObject):
                     df_feed_stops_with_headway["pretty_printed_headway"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_pretty_printed_headway
                     )
+                    df_feed_stops_with_headway["score"] = df_feed_stops_with_headway["headway"].map(score_stop)
                     df_frequent_stops = df_feed_stops_with_headway.loc[df_feed_stops_with_headway["min_headway"] <= self.min_headway]
                     gdf_frequent_stops = gpd.GeoDataFrame(
                         df_frequent_stops,
@@ -244,8 +252,9 @@ class GTFSDataObject(DataObject):
                         print(gdf_frequent_stops.head())
                         gdf_frequent_stops.loc[:, "agency_name"] = feed_name
                         gdf_frequent_stops.loc[:, "agency_id"] = feed_id
-                        gdf_frequent_stops.crs = GEOGRAPHIC_CRS
+                        gdf_frequent_stops.crs = GEODESIC_CRS
                         gdf_frequent_stops_in_area = gdf_frequent_stops.loc[gdf_frequent_stops.within(load_area_transformed)]
+                        
                         frequent_stops_gdf_list.append(
                             gdf_frequent_stops_in_area
                         )
@@ -268,26 +277,26 @@ class GTFSDataObject(DataObject):
                 ).size == 0
             )
             self.gdf_all_frequent_stops = pd.concat(
-                [gdf_downloaded_frequent_stops, gdf_cached_frequent_stops_to_keep]
-            ).drop(
-                "headway", axis=1, errors="ignore"
+                [gdf_downloaded_frequent_stops.drop("headway", axis=1), gdf_cached_frequent_stops_to_keep]
             )
+            # Save result to a file
+            self.gdf_all_frequent_stops.to_file(stops_geometry_path)
         else:
             self.gdf_all_frequent_stops = gdf_cached_frequent_stops
         self.df_feeds_metadata = df_feeds_metadata
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
-        self.gdf_all_frequent_stops.drop("headway", axis=1, errors="ignore").to_file(stops_geometry_path)
+        self.data_loaded = True
 
     def get_folium_plot(self) -> folium.GeoJson:
-        intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "pretty_printed_headway"]
-        intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Headway by route"]
+        assert self.data_loaded
+        intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "pretty_printed_headway", "score"]
+        intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Headway by route", "Score"]
         fields, aliases = filter_two_corresponding_arrays(
             self.gdf_all_frequent_stops.columns,
             intended_fields,
             intended_aliases,
         )
-        print(aliases)
         gtfs_popup = folium.GeoJsonPopup(
             fields=fields,
             alias=aliases,
@@ -295,6 +304,9 @@ class GTFSDataObject(DataObject):
         gtfs_geojson = folium.GeoJson(
             self.gdf_all_frequent_stops,
             popup=gtfs_popup,
-            marker=basic_circle_marker("dark_blue", radius=2.5)
+            marker=basic_circle_marker("dark_blue", radius=2.5),
+            style_function = lambda x: {
+                "radius": x["properties"]["score"]/10 * 5
+            }
         )
         return gtfs_geojson

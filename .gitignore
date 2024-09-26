@@ -4,3 +4,4 @@ rawData/*
 !rawData/.gitkeep
 cache/*
 !cache/.gitkeep
+gtfs/

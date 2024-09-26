@@ -7,17 +7,19 @@ from .GTFSDataObject import *
 from .constants import *
 from .IPCDDataObject import *
 from .EJScreenDataObject import *
-from .FeedWrapper import *
+from .GTFSFeedWrapper import *
+from .CityBikesDataObject import *
 __all__ = [
     "APIDataObject",
     "AFDCApiDataObject",
     "constants",
     "DataObject",
     "EJScreenDataObject",
-    "FeedWrapper",
+    "GTFSFeedWrapper",
     "FTAFacilityInventoryDataObject",
     "GTFSDataObject",
     "IPCDDataObject",
-    "OSMDataObject"
+    "OSMDataObject",
+    "CityBikesDataObject",
 ]
 #%%
