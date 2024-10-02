@@ -69,20 +69,26 @@ class GTFSFeedWrapper:
         ): #TODO: return type
         #TODO: figure out a good way to handle services where there are a substantial nuber of trips but they are all grouped around a short time period
         trip_ids_serving_stop = self.feed.stop_times.loc[self.feed.stop_times.stop_id == stop_id, "trip_id"]
+        id_columns = ("route_id",)
+        has_direction_id = False
+        if "direction_id" in self.feed.trips.columns:
+            id_columns = ("route_id", "direction_id")
+            has_direction_id = True
         df_route_and_direction_ids_serving_stop = self.feed.trips.loc[ # inefficient?
             self.feed.trips.trip_id.isin(trip_ids_serving_stop),
-            ["route_id", "direction_id"],
+            id_columns,
         ].drop_duplicates()
-        #TODO: need to figure out how to get an id that can be used as a dict to a route efficiently for pretty printing or replace this key with an enum
-        #TODO use an enum because they're hashable
+        if not has_direction_id:
+            df_route_and_direction_ids_serving_stop["direction_id"] = 0
         df_route_and_direction_ids_serving_stop["route_direction_combined"] = df_route_and_direction_ids_serving_stop.apply(
             lambda x: (x["route_id"], x["direction_id"]),
             axis=1
         ) #TODO: is an apply bad here??
         df_route_and_direction_ids_serving_stop.set_index("route_direction_combined", inplace=True)
         def get_percentile_headway_for_route_direction(route_id, direction_id):
+            trips_with_matching_route_direction = (self.feed.trips.route_id == route_id) & (self.feed.trips.direction_id == direction_id) if has_direction_id else self.feed.trips.route_id == route_id
             trips_for_specified_route_direction = self.feed.trips.loc[
-                (self.feed.trips.route_id == route_id) & (self.feed.trips.direction_id == direction_id),
+                trips_with_matching_route_direction,
                 "trip_id"
             ]
             df_stop_times_for_specified_stop_route_direction_time = self.feed.stop_times[ # inefficient?

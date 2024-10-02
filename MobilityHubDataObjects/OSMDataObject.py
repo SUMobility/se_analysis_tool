@@ -46,7 +46,7 @@ class OSMDataObject(DataObject):
         )
         osm_geojson = folium.GeoJson(
             self.data_object[["bicycle_parking", "capacity", "covered", "geometry"]],
-            marker=basic_circle_marker("orange"),
+            marker=basic_circle_marker("red"),
             popup=osm_popup,
         )
         return osm_geojson

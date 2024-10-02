@@ -13,7 +13,7 @@ import pathlib
 import subprocess
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
-from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
+from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_curl, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 
 class GTFSDataObject(DataObject):
@@ -31,7 +31,7 @@ class GTFSDataObject(DataObject):
         time_start: dt.time,
         time_end: dt.time,
         min_headway: int, 
-        api_key_path: str
+        api_key_path: str,
     ) -> None:
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
         self.transitland_url = transitland_url
@@ -44,7 +44,7 @@ class GTFSDataObject(DataObject):
         self.transitland_last_queried = None
         self.api_key_path = api_key_path
 
-    def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
+    async def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
         MAX_RESPONSES_PER_PAGE = 100
         MAX_CHUNK_SIZE = 65536
         def score_stop(headway_dict):
@@ -63,6 +63,7 @@ class GTFSDataObject(DataObject):
         with open(self.api_key_path) as f:
             api_key_path = f.read()
         transitland_url = f"{self.transitland_url}?bbox={load_area_bounds}&limit={MAX_RESPONSES_PER_PAGE}&license_create_derived_product=exclude_no&license_redistribution_allowed=exclude_no&apikey={api_key_path}"
+        print(f"INFO: Transitland URL: {transitland_url}")
         transitland_response = requests.get(transitland_url)
         if transitland_response.status_code != 200:
             raise RuntimeError(f"TRANSITLAND API did not load with code {transitland_response.status_code}")
@@ -106,7 +107,7 @@ class GTFSDataObject(DataObject):
         processed_agency_ids = []
         for feed in transitland_json["feeds"]:
             feed_id = feed["onestop_id"]
-            print(f"Got {feed_id}")
+            print(f"INFO: Processing {feed_id}")
             # Get the most recent currently valid feed
             df_feed_versions = pd.DataFrame(feed["feed_versions"])
             df_feed_versions["date_fetched_dt"] = pd.to_datetime(df_feed_versions["fetched_at"])
@@ -117,12 +118,10 @@ class GTFSDataObject(DataObject):
             newest_relevant_feed_version = df_feed_versions.loc[df_feed_versions_relevant["date_fetched_dt"].idxmax()]
             download_new_file = True
             if feed_id in df_feeds_metadata.index and df_feeds_metadata.at[feed_id, "last_fetch_succeeded"]:
-                # TODO: figure out if any of these are redundant 
                 # The current feed is already in the cache, so we may not need to download a new file
                 cached_feed_metadata = df_feeds_metadata.loc[feed_id]
                 cached_last_downloaded = dt.datetime.fromisoformat(cached_feed_metadata["last_fetched"])
                 cached_end_of_life = dt.datetime.fromisoformat(cached_feed_metadata["last_valid_date"])
-                print(cached_last_downloaded, cached_end_of_life)
                 cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
                 assert not safe_is_na(cached_last_downloaded) and not safe_is_na(cached_end_of_life) and not safe_is_na(cached_fetch_status)
                 if (
@@ -136,60 +135,27 @@ class GTFSDataObject(DataObject):
                 feed_output_path = self.gtfs_cache_path / f"GTFS_{feed['onestop_id']}.zip"
 
                 # Download the feed
-                sha1_hash = hashlib.new("sha1")
                 try:
-                    with requests.get(feed_url, stream=True) as r:
-                        print(f"downloading {feed['onestop_id']}")
-                        try:
-                            r.raise_for_status()
-                            with open(feed_output_path, "wb") as f:
-                                for chunk in r.iter_content(chunk_size=MAX_CHUNK_SIZE): 
-                                    if chunk:
-                                        f.write(chunk)
-                                        sha1_hash.update(chunk)
-                        except requests.HTTPError as e:
-                            if r.status_code == 403:
-                                # try downloading with curl instead, sometimes that fixes it...
-                                # Would be better to use pycurl, but that won't import on my system
-                                # TODO: need to only do this on a unix system
-                                curl_command = f"curl -o {feed_output_path.resolve()} {feed_url}"
-                                print(f"WARN: For {feed['onestop_id']}, the following error was triggered:")
-                                print(e)
-                                print(f"Trying to download {feed_url} with curl instead:")
-                                subprocess.call(curl_command, shell=True) #TODO: internal screaming
-                                try:
-                                    # Attempt to open the downloaded feed as text - this should fail if the object is actually a feed
-                                    with open(feed_output_path, "rb") as f:
-                                        downloaded = f.read()
-                                        try:
-                                            if "ACCESS DENIED" in downloaded.decode("utf-8").upper():
-                                                print(
-                                                    f"WARN: Curl Download still refused for {feed_id}"
-                                                )
-                                            else:
-                                                print(
-                                                    f"WARN: The url at {feed_url} for {feed_id} responded with the following text rather than a feed"
-                                                )
-                                                print(downloaded.decode("utf-8"))
-                                            df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                                            continue
-                                        except UnicodeDecodeError:
-                                            # This means that the file isn't text, so it likely is a valid feed
-                                            print("Curl Download successful")
-                                except FileNotFoundError:
-                                    print("WARN: Curl download did not succeed")
-                                    df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                                    continue
-                            else:
-                                print(f"Download for {feed_id} failed with error {e}")
-                                df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                                continue
+                    try:
+                        sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
+                    except requests.HTTPError as e:
+                        if e.response.status_code == 403:
+                            # try downloading with curl instead, sometimes that fixes it...
+                            # Would be better to use pycurl, but that won't import on my system
+                            sha1_hash = download_file_with_curl(feed_url, feed_output_path, feed_id, MAX_CHUNK_SIZE)
+                            if sha1_hash is None:
+                                # Curl download failed
+                                print("INFO: The Curl download failed. Trying Playwright download")
+                                sha1_hash = await download_file_with_playwright(feed_url, feed_output_path, feed_id, MAX_CHUNK_SIZE)
+                        else:
+                            print(f"WARN: Download for {feed_id} failed with error {e.response.status_code}")
+                            df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
+                            continue
                 except Exception as e:
-                    print(f"Connection to {feed_url} for {feed_id} has the following error:")
-                    print(e)
+                    print(f"WARN: Connection to {feed_url} for {feed_id} has the following error:")
                     df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                     continue
-                if sha1_hash.hexdigest() != newest_relevant_feed_version["sha1"]:
+                if sha1_hash is not None and sha1_hash.hexdigest() != newest_relevant_feed_version["sha1"]:
                     print(
                         f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match {newest_relevant_feed_version['sha1']}"
                     )
@@ -204,7 +170,7 @@ class GTFSDataObject(DataObject):
                 try:
                     feed_object = GTFSFeedWrapper(feed_output_path)
                 except Exception as e:
-                    print(f"The feed for {feed_id} downloaded successfully, but processing it gave the following fatal error:")
+                    print(f"WARN: The feed for {feed_id} downloaded successfully, but processing it gave the following fatal error:")
                     print(str(e))
                     df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                     continue
@@ -226,18 +192,15 @@ class GTFSDataObject(DataObject):
                 }
 
                 # Get stop frequencies
-                print("Processing stops - this takes a while")
+                print("INFO: Processing stops - this takes a while")
                 df_feed_stops_with_headway = None
-                try:
-                    df_feed_stops_with_headway = feed_object.get_stops_with_headways(
-                        time_start=self.time_start,
-                        time_end=self.time_end,
-                        percentile=80,
-                        trip_cutoff=5
-                    )
-                except Exception as e:
-                    print(f"WARN: Could not process feed for {feed['onestop_id']}. Error below")
-                    print(e)
+                #try:
+                df_feed_stops_with_headway = feed_object.get_stops_with_headways(
+                    time_start=self.time_start,
+                    time_end=self.time_end,
+                    percentile=80,
+                    trip_cutoff=5
+                )
                 if df_feed_stops_with_headway is not None:
                     df_feed_stops_with_headway["min_headway"] = df_feed_stops_with_headway["headway"].map(
                         lambda x: np.nan if safe_is_na(x) else min(x.values())
@@ -252,7 +215,6 @@ class GTFSDataObject(DataObject):
                         geometry=gpd.points_from_xy(df_frequent_stops["stop_lon"], df_frequent_stops["stop_lat"]),
                     )
                     if len(gdf_frequent_stops) > 0:
-                        print(gdf_frequent_stops.head())
                         gdf_frequent_stops.loc[:, "agency_name"] = feed_name
                         gdf_frequent_stops.loc[:, "agency_id"] = feed_id
                         gdf_frequent_stops.crs = GEODESIC_CRS
@@ -266,8 +228,13 @@ class GTFSDataObject(DataObject):
 
         
         # Merge newly downloaded and cached stops
+        for i in frequent_stops_gdf_list:
+            print(i.head())
+        print(f"PRINTING ALL PROCESSED AGENCY IDS: {", ".join(processed_agency_ids)}")
+        
         if len(frequent_stops_gdf_list) > 0:
             gdf_downloaded_frequent_stops = pd.concat(frequent_stops_gdf_list)
+            print(f"AGENCIES: {gdf_downloaded_frequent_stops["agency_id"].unique()}")
             gdf_cached_frequent_stops_to_keep = gpd.GeoDataFrame(columns=gdf_downloaded_frequent_stops.columns)
             if len(gdf_cached_frequent_stops) > 0:
                 gdf_cached_frequent_stops_to_keep = gdf_cached_frequent_stops.loc[
