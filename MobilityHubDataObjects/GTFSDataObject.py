@@ -14,7 +14,7 @@ import subprocess
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_curl, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
-from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
 class GTFSDataObject(DataObject):
 
@@ -209,6 +209,9 @@ class GTFSDataObject(DataObject):
                         feed_object.get_pretty_printed_headway
                     )
                     df_feed_stops_with_headway["score"] = df_feed_stops_with_headway["headway"].map(score_stop)
+                    df_feed_stops_with_headway["primary_mode"] = df_feed_stops_with_headway["headway"].map(
+                        feed_object.get_primary_mode_from_headway
+                    )
                     df_frequent_stops = df_feed_stops_with_headway.loc[df_feed_stops_with_headway["min_headway"] <= self.min_headway]
                     gdf_frequent_stops = gpd.GeoDataFrame(
                         df_frequent_stops,
@@ -223,10 +226,7 @@ class GTFSDataObject(DataObject):
                         frequent_stops_gdf_list.append(
                             gdf_frequent_stops_in_area
                         )
-                    processed_agency_ids.append(feed_id)
-                
-
-        
+                    processed_agency_ids.append(feed_id)        
         # Merge newly downloaded and cached stops
         for i in frequent_stops_gdf_list:
             print(i.head())
@@ -260,8 +260,8 @@ class GTFSDataObject(DataObject):
 
     def get_folium_plot(self) -> folium.GeoJson:
         assert self.data_loaded
-        intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "pretty_printed_headway", "score"]
-        intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Headway by route", "Score"]
+        intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
+        intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
         fields, aliases = filter_two_corresponding_arrays(
             self.gdf_all_frequent_stops.columns,
             intended_fields,
@@ -277,7 +277,8 @@ class GTFSDataObject(DataObject):
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function = lambda x: {
-                "radius": np.sqrt(x["properties"]["score"])/max_sqrt_score * 5
+                "radius": np.sqrt(x["properties"]["score"])/max_sqrt_score * 5,
+                "fillColor": MODE_COLOR_MAP[x["properties"]["primary_mode"]]
             }
         )
         return gtfs_geojson
