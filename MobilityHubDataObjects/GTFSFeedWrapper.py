@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from MobilityHubDataObjects.constants import GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int
 
 class GTFSFeedWrapper:
@@ -16,12 +17,13 @@ class GTFSFeedWrapper:
         view = {"trips.txt": {"service_id": service_ids}}
         self.feed = ptg.load_feed(str(self.path), view)
         self.routes = self.feed.routes[
-            ["route_id", "route_short_name", "route_long_name"]
+            ["route_id", "route_short_name", "route_long_name", "route_type"]
         ].set_index("route_id")
         self.routes["route_aggregated_name"] = self.routes["route_short_name"].where(
             ~self.routes["route_short_name"].isna(),
             other=self.routes["route_long_name"]
         )
+        self.routes["route_mode_key"] = self.routes["route_type"].map(GTFS_ROUTE_TYPE_TO_ID_MAP)
     
     def get_stops_with_headways(
         self,
@@ -56,7 +58,17 @@ class GTFSFeedWrapper:
             return np.nan
         return ", ".join(
             [f"{self.routes.loc[route_id[0], "route_aggregated_name"]} - {route_id[1]}: {stop_headway_object[route_id]} mins" for route_id in stop_headway_object]
-        )       
+        ) 
+
+    def get_primary_mode_from_headway(self, stop_headway_object: dict):
+        if safe_is_na(stop_headway_object):
+            return np.nan
+        route_ids = [route_direction_pair[0] for route_direction_pair in stop_headway_object.keys()]
+        if len(route_ids) == 0:
+            return np.nan
+        route_type_ids = self.routes.loc[route_ids, "route_mode_key"].unique()
+        primary_mode_id = sorted(route_type_ids, key=lambda x: ROUTE_PRIORITY_MAP[x])[0]
+        return ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[primary_mode_id]
 
     # "Private"
     def _get_percentile_headway_minutes_for_stop(
