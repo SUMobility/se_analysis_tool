@@ -18,10 +18,10 @@ class EJScreenDataObject(DataObject):
             load_area: (shapely.MultiPolygon | shapely.Polygon | None),
             load_area_crs: int = 4326,
         ) -> None:
-        gdf_ejscreen = gpd.read_file(self.path)[["PTRAF", "P_PTRAF", "geometry"]]
-        self.data_object = gdf_ejscreen.loc[
-            gdf_ejscreen.intersects(transform_shapely_geometry(load_area_crs, gdf_ejscreen.crs, load_area))
-        ].copy() #TODO: maybe like shrink the block groups slightly and use within instead, since using intersect selects too many and using just within selects too few
+        self.data_object = gpd.read_file(
+            self.path,
+            mask=transform_shapely_geometry(load_area_crs, 4269, load_area)
+        )[["PTRAF", "P_PTRAF", "geometry"]]
 
     def get_folium_plot(self) -> folium.GeoJson:
         color_map = {
