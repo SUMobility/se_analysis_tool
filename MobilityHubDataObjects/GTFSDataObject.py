@@ -17,7 +17,6 @@ from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
 class GTFSDataObject(DataObject):
-
     df_feeds_metadata = None
     load_area = None
     gdf_all_frequent_stops = gpd.GeoDataFrame()
@@ -47,6 +46,7 @@ class GTFSDataObject(DataObject):
     async def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
         MAX_RESPONSES_PER_PAGE = 100
         MAX_CHUNK_SIZE = 65536
+        MAX_CALLS = 100
         def score_stop(headway_dict):
             if safe_is_na(headway_dict):
                 return np.nan
@@ -56,19 +56,12 @@ class GTFSDataObject(DataObject):
                 score += -10 * (1 / (1 + np.e ** (-(headway - 17)/5))) + 10.3229
             return score
         load_area_transformed = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
-        transitland_json = {}
         # Query Transitland
-        #TODO: needs to loop until we are sure each file is downloaded
-        load_area_bounds = ",".join(map(lambda x: str(x), load_area_transformed.bounds))
-        with open(self.api_key_path) as f:
-            api_key_path = f.read()
-        transitland_url = f"{self.transitland_url}?bbox={load_area_bounds}&limit={MAX_RESPONSES_PER_PAGE}&license_create_derived_product=exclude_no&license_redistribution_allowed=exclude_no&apikey={api_key_path}"
-        print(f"INFO: Transitland URL: {transitland_url}")
-        transitland_response = requests.get(transitland_url)
-        if transitland_response.status_code != 200:
-            raise RuntimeError(f"TRANSITLAND API did not load with code {transitland_response.status_code}")
-        else:
-            transitland_json = transitland_response.json()
+        transitland_feeds = self._recursively_make_transitland_call(
+            MAX_RESPONSES_PER_PAGE,
+            load_area_transformed.bounds,
+            MAX_CALLS
+        )
         df_feeds_metadata = pd.DataFrame
         feeds_columns = [
                 "name",
@@ -105,7 +98,8 @@ class GTFSDataObject(DataObject):
             )
         frequent_stops_gdf_list = []
         processed_agency_ids = []
-        for feed in transitland_json["feeds"]:
+        for feed in transitland_feeds:
+            print(feed)
             feed_id = feed["onestop_id"]
             print(f"INFO: Processing {feed_id}")
             # Get the most recent currently valid feed
@@ -136,28 +130,20 @@ class GTFSDataObject(DataObject):
 
                 # Download the feed
                 try:
-                    try:
-                        sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
-                    except requests.HTTPError as e:
-                        if e.response.status_code == 403:
-                            # try downloading with curl instead, sometimes that fixes it...
-                            # Would be better to use pycurl, but that won't import on my system
-                            sha1_hash = download_file_with_curl(feed_url, feed_output_path, feed_id, MAX_CHUNK_SIZE)
-                            if sha1_hash is None:
-                                # Curl download failed
-                                print("INFO: The Curl download failed. Trying Playwright download")
-                                sha1_hash = await download_file_with_playwright(feed_url, feed_output_path, feed_id, MAX_CHUNK_SIZE)
-                        else:
-                            print(f"WARN: Download for {feed_id} failed with error {e.response.status_code}")
-                            df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                            continue
-                except Exception as e:
-                    print(f"WARN: Connection to {feed_url} for {feed_id} has the following error:")
+                    sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
+                except requests.HTTPError as e:
+                    sha1_hash = None
+                if sha1_hash is None:
+                    print("INFO: Requests download failed. Will try Playwright")
+                    sha1_hash = await download_file_with_playwright(feed_url, 
+                        feed_output_path, feed_id, MAX_CHUNK_SIZE)
+                if sha1_hash is None:
+                    print(f"WARN: Download for {feed_id} failed even with Playwright")
                     df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                     continue
                 if sha1_hash is not None and sha1_hash.hexdigest() != newest_relevant_feed_version["sha1"]:
                     print(
-                        f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match {newest_relevant_feed_version['sha1']}"
+                        f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match the provided hash from Transitland {newest_relevant_feed_version['sha1']}"
                     )
                 feed_last_fetched = dt.datetime.now(tz=dt.timezone.utc)
                 feed_end_of_life_dt = dt.datetime.fromisoformat(newest_relevant_feed_version["latest_calendar_date"])
@@ -167,13 +153,7 @@ class GTFSDataObject(DataObject):
                 feed_must_attribute = yes_no_to_bool(feed["license"]["use_without_attribution"])
                 #TODO: figure out feed object to get agency name and url and run feedutils functions without needing to load a new feed each time
                 # Process frequent stops
-                try:
-                    feed_object = GTFSFeedWrapper(feed_output_path)
-                except Exception as e:
-                    print(f"WARN: The feed for {feed_id} downloaded successfully, but processing it gave the following fatal error:")
-                    print(str(e))
-                    df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                    continue
+                feed_object = GTFSFeedWrapper(feed_output_path)
                 feed_name = feed_object.get_agency_name()
                 print(f"FEED NAME: {feed_name}")
                 feed_agency_url = feed_object.get_agency_url()
@@ -282,3 +262,84 @@ class GTFSDataObject(DataObject):
             }
         )
         return gtfs_geojson
+    
+    
+
+    def _recursively_make_transitland_call(self, max_responses, initial_load_area_bounds, max_calls):
+        def make_transitland_call(max_responses, load_area_bounds, after = None, max_calls=None):
+            if max_calls is not None and max_calls <= 0:
+                raise RecursionError("Max Transitland calls exceeded")
+            with open(self.api_key_path) as f:
+                api_key = f.read()
+            stringified_bounds = ",".join(map(lambda x: str(x), load_area_bounds))
+            transitland_url = f"{self.transitland_url}?bbox={stringified_bounds}&limit={max_responses}&license_create_derived_product=exclude_no&license_redistribution_allowed=exclude_no&apikey={api_key}"
+            if after is not None:
+                transitland_url += f"&after={after}"
+            print(f"INFO: Transitland URL: {transitland_url}")
+            transitland_response = requests.get(transitland_url)
+            transitland_response.raise_for_status()
+            transitland_json = transitland_response.json()
+            new_max_calls = None if max_calls is None else max_calls - 1
+            if "meta" in transitland_json:
+                additional_feeds, returned_max_calls = make_transitland_call(
+                    max_responses,
+                    load_area_bounds,
+                    after=transitland_json["meta"]["after"],
+                    max_calls=new_max_calls,
+                )
+                return transitland_json["feeds"] + additional_feeds, returned_max_calls
+            return transitland_response.json()["feeds"], new_max_calls
+
+        def recursively_make_transitland_call_help(max_responses, initial_load_area_bounds, max_calls):
+            if max_calls == 0:
+                raise RecursionError("Max Transitland calls exceeded")
+            try:
+                returned_feeds, _ = make_transitland_call(max_responses, initial_load_area_bounds)
+                return returned_feeds, max_calls - 1
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code != 500:
+                    raise(e)
+                bounds_center = (
+                    (initial_load_area_bounds[0] + initial_load_area_bounds[2]) / 2,
+                    (initial_load_area_bounds[1] + initial_load_area_bounds[3]) / 2,
+                )
+                quadrant_one = (
+                    bounds_center[0],
+                    bounds_center[1],
+                    initial_load_area_bounds[2],
+                    initial_load_area_bounds[3],
+                )
+                quadrant_two = (
+                    initial_load_area_bounds[0],
+                    bounds_center[1],
+                    bounds_center[0],
+                    initial_load_area_bounds[3],
+                )
+                quadrant_three = (
+                    initial_load_area_bounds[0], 
+                    initial_load_area_bounds[1],
+                    bounds_center[0], 
+                    bounds_center[1],
+                )
+                quadrant_four = (
+                    bounds_center[0],
+                    initial_load_area_bounds[1],
+                    initial_load_area_bounds[2],
+                    bounds_center[1],
+                )
+                feeds = []
+                current_max_calls = max_calls - 1
+                for quadrant in (quadrant_one, quadrant_two, quadrant_three, quadrant_four):
+                    returned_feeds, returned_max_calls = recursively_make_transitland_call_help(max_responses, quadrant, current_max_calls)
+                    feeds.append(returned_feeds)
+                    current_max_calls = returned_max_calls
+                all_feeds_with_duplicates = np.concatenate(feeds)
+                unique_feed_indices = np.unique(
+                    [feed["onestop_id"] for feed in all_feeds_with_duplicates],
+                    return_index = True
+                )[1]
+                output = all_feeds_with_duplicates[unique_feed_indices]
+                return output, current_max_calls
+        output, _ = recursively_make_transitland_call_help(max_responses, initial_load_area_bounds, max_calls)
+        return output
+

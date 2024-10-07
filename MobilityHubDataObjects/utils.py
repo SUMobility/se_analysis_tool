@@ -7,7 +7,8 @@ import numpy as np
 import requests
 import shapely
 import datetime as dt
-from playwright.async_api import async_playwright, Playwright
+from playwright.async_api import async_playwright, Playwright, Error, TimeoutError
+import zipfile
 
 def basic_circle_marker(fillColor: str, **kwargs) -> folium.CircleMarker:
     kwargs_to_pass = dict(kwargs)
@@ -105,13 +106,20 @@ def download_json_safely(url: str): #TODO: consider moving to utils.oy
 def download_file_with_requests(url: str, output_path: str | pathlib.Path, max_chunk_size: int): #TODO: return type
     sha1_hash = hashlib.new("sha1")
     with requests.get(url, stream=True) as r:
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            print(f"WARN: Requests download failed with the following error")
+            print(e.response.text)
+            return None
         with open(pathlib.Path(output_path).resolve(), "wb") as f:
             for chunk in r.iter_content(chunk_size=max_chunk_size): 
                 if chunk:
                     f.write(chunk)
-                    sha1_hash.update(chunk) 
-    print("INFO: Download complete")
+                    sha1_hash.update(chunk)
+        if not zipfile.is_zipfile(output_path):
+            print("WARN: File downloaded, but a zip file was not returned")
+            return None
     return sha1_hash
 
 def get_sha1_hash(f, max_chunk_size, start_bytes=None):
@@ -128,6 +136,8 @@ def download_file_with_curl(url: str, output_path: str | pathlib.Path, error_id:
     try:
         # Attempt to open the downloaded feed as text - this should fail if the object is actually a feed
         with open(output_path, "rb") as f:
+            if not zipfile.is_zipfile(f):
+                return None
             downloaded = f.read(max_chunk_size)
             try:
                 if "ACCESS DENIED" in downloaded.decode("utf-8").upper():
@@ -155,14 +165,18 @@ async def download_file_with_playwright(url: str, output_path: str | pathlib.Pat
         succeeded = False
         page = await browser.new_page()
         print(f"INFO: Downloading {url} with Playwright")
-        async with page.expect_download() as download_info:
-            try:
-                await page.goto(url)
-                await page.screenshot(path=output_path.with_name(f"{error_id}.png"))
-            except:
-                download = await download_info.value
-                await download.save_as(output_path)
-                succeeded = True
+        try:
+            async with page.expect_download(timeout=10000) as download_info:
+                try:
+                    await page.goto(url)
+                    await page.screenshot(path=output_path.with_name(f"{error_id}.png"))
+                except Error as e:
+                    print(e)
+                    download = await download_info.value
+                    await download.save_as(output_path)
+                    succeeded = True
+        except TimeoutError as e:
+            print(f"WARN: Playwright download for {error_id} timed out")
         return succeeded
 
     async with async_playwright() as p:
@@ -179,5 +193,7 @@ async def download_file_with_playwright(url: str, output_path: str | pathlib.Pat
     
     if succeeded:
         with open(output_path, "rb") as f:
+            if zipfile.is_zipfile(output_path):
+                return None
             return get_sha1_hash(f, max_chunk_size)
     return None
