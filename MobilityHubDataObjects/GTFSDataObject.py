@@ -3,17 +3,14 @@ import folium
 import numpy as np
 import requests
 from shapely import MultiPolygon, Polygon
-import shapely
 from MobilityHubDataObjects import DataObject
 import datetime as dt
 import pandas as pd
 import geopandas as gpd
-import hashlib
 import pathlib
-import subprocess
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
-from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_curl, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
+from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
 class GTFSDataObject(DataObject):
@@ -173,13 +170,13 @@ class GTFSDataObject(DataObject):
 
                 # Get stop frequencies
                 print("INFO: Processing stops - this takes a while")
-                df_feed_stops_with_headway = None
-                #try:
                 df_feed_stops_with_headway = feed_object.get_stops_with_headways(
                     time_start=self.time_start,
                     time_end=self.time_end,
                     percentile=80,
-                    trip_cutoff=5
+                    filter_area=load_area_transformed,
+                    filter_area_crs=GEODESIC_CRS,
+                    trip_cutoff=5,
                 )
                 if df_feed_stops_with_headway is not None:
                     df_feed_stops_with_headway["min_headway"] = df_feed_stops_with_headway["headway"].map(
@@ -257,7 +254,7 @@ class GTFSDataObject(DataObject):
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function = lambda x: {
-                "radius": np.sqrt(x["properties"]["score"])/max_sqrt_score * 5,
+                "radius": max(1.5, np.sqrt(x["properties"]["score"])/max_sqrt_score * 5),
                 "fillColor": MODE_COLOR_MAP[x["properties"]["primary_mode"]]
             }
         )

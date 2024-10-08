@@ -1,39 +1,84 @@
-from enum import Enum
 import pathlib
 import partridge as ptg
 import datetime as dt
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import traceback
 
-from MobilityHubDataObjects.constants import GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
-from MobilityHubDataObjects.utils import safe_is_na, time_to_int
+from MobilityHubDataObjects.constants import GEODESIC_CRS, GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
+from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
+
+def print_bad_gtfs_warning(e):
+    print(f"WARN: GTFS feed could not be read, because it was missing a required column. Exception is below:")
+    print(e)
 
 class GTFSFeedWrapper:
     # Public
+    loaded = False
     def __init__(self, feed_path: str | pathlib.Path):
         self.path = pathlib.Path(feed_path).resolve()
-        _date, service_ids = ptg.read_busiest_date(str(self.path))
+
+        def print_partridge_warning(e):
+            print(f"WARN: Partridge failed to read a GTFS feed. This is likely because the feed was improperly formatted. Traceback follows:")
+            print(traceback.print_exception(e))
+
+        try:
+            _, service_ids = ptg.read_busiest_date(str(self.path))
+        except Exception as e:
+            print_partridge_warning(e)
+            return
         view = {"trips.txt": {"service_id": service_ids}}
-        self.feed = ptg.load_feed(str(self.path), view)
-        self.routes = self.feed.routes[
-            ["route_id", "route_short_name", "route_long_name", "route_type"]
-        ].set_index("route_id")
-        self.routes["route_aggregated_name"] = self.routes["route_short_name"].where(
-            ~self.routes["route_short_name"].isna(),
-            other=self.routes["route_long_name"]
+        try:
+            self.feed = ptg.load_feed(str(self.path), view)
+        except Exception as e:
+            print_partridge_warning(e)
+            return
+        try:
+            self.routes = self.feed.routes[
+                ["route_id", "route_type"]
+            ].set_index("route_id")
+        except AttributeError as e:
+            print_bad_gtfs_warning(e)
+            return
+
+        if "route_short_name" in self.feed.routes.columns:
+            self.routes["route_short_name"] = self.feed.routes["route_short_name"]
+        else:
+            self.routes["route_short_name"] = np.nan
+        if "route_long_name" in self.feed.routes.columns:
+            self.routes["route_long_name"] = self.feed.routes["route_long_name"]
+        else:
+            self.routes["route_long_name"] = np.nan
+        self.routes["route_aggregated_name"] = (self.routes["route_short_name"].fillna(
+            self.routes["route_long_name"]
+        )).fillna(
+            pd.Series(self.routes.index, index=self.routes.index)
         )
         self.routes["route_mode_key"] = self.routes["route_type"].map(GTFS_ROUTE_TYPE_TO_ID_MAP)
+        self.loaded = True
     
     def get_stops_with_headways(
         self,
         time_start: dt.time,
         time_end: dt.time,
         percentile: int,
-        trip_cutoff: int = 5
+        filter_area,
+        filter_area_crs,
+        trip_cutoff: int = 5,
     ) -> pd.DataFrame:
+        if not self.loaded:
+            return None
         df_stops = self.feed.stops.copy()
-        df_stops["headway"] = df_stops.stop_id.map(
+        gdf_stops = gpd.GeoDataFrame(
+            df_stops,
+            geometry=gpd.points_from_xy(df_stops["stop_lat"], df_stops["stop_lon"]),
+            crs=GEODESIC_CRS,
+        )
+        gdf_stops_in_area = gdf_stops.loc[
+            gdf_stops.within(transform_shapely_geometry(filter_area_crs, GEODESIC_CRS, filter_area))
+        ]
+        gdf_stops_in_area["headway"] = gdf_stops_in_area.stop_id.map(
             lambda stop_id: self._get_percentile_headway_minutes_for_stop(
                 stop_id=stop_id, 
                 time_start=time_to_int(time_start),
@@ -42,18 +87,24 @@ class GTFSFeedWrapper:
                 trip_cutoff=trip_cutoff
             )
         )
-        return df_stops.copy()
+        return pd.DataFrame(gdf_stops_in_area).copy()
     
     def get_agency_name(self) -> str | float:
+        if not self.loaded:
+            return None
         if len(self.feed.agency.agency_name == 0):
             return self.feed.agency.agency_name.iloc[0]
         else:
             return "Agency has Multiple Names"
     
     def get_agency_url(self) -> str:
+        if not self.loaded:
+            return None
         return self.feed.agency.agency_url
     
     def get_pretty_printed_headway(self, stop_headway_object: dict):
+        if not self.loaded:
+            return None
         if safe_is_na(stop_headway_object):
             return np.nan
         return ", ".join(
@@ -61,6 +112,8 @@ class GTFSFeedWrapper:
         ) 
 
     def get_primary_mode_from_headway(self, stop_headway_object: dict):
+        if not self.loaded:
+            return None
         if safe_is_na(stop_headway_object):
             return np.nan
         route_ids = [route_direction_pair[0] for route_direction_pair in stop_headway_object.keys()]
