@@ -18,10 +18,11 @@ class EJScreenDataObject(DataObject):
             load_area: (shapely.MultiPolygon | shapely.Polygon | None),
             load_area_crs: int = 4326,
         ) -> None:
-        self.data_object = gpd.read_file(
+        gdf_ejscreen = gpd.read_file(
             self.path,
             mask=transform_shapely_geometry(load_area_crs, 4269, load_area)
         )[["PTRAF", "P_PTRAF", "geometry"]]
+        self.data_object = gdf_ejscreen.loc[gdf_ejscreen.within(transform_shapely_geometry(load_area_crs, 4269, load_area))]
 
     def get_folium_plot(self) -> folium.GeoJson:
         color_map = {
