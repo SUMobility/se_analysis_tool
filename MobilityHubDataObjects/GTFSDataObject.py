@@ -199,7 +199,6 @@ class GTFSDataObject(DataObject):
                         gdf_frequent_stops.loc[:, "agency_id"] = feed_id
                         gdf_frequent_stops.crs = GEODESIC_CRS
                         gdf_frequent_stops_in_area = gdf_frequent_stops.loc[gdf_frequent_stops.within(load_area_transformed)]
-                        
                         frequent_stops_gdf_list.append(
                             gdf_frequent_stops_in_area
                         )
