@@ -9,31 +9,33 @@ import traceback
 from MobilityHubDataObjects.constants import GEODESIC_CRS, GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
 
-def print_bad_gtfs_warning(e):
-    print(f"WARN: GTFS feed could not be read, because it was missing a required column. Exception is below:")
-    print(e)
 
 class GTFSFeedWrapper:
     # Public
     loaded = False
     def __init__(self, feed_path: str | pathlib.Path):
         self.path = pathlib.Path(feed_path).resolve()
-
+        # Helper functions for printing exceptions 
         def print_partridge_warning(e):
             print(f"WARN: Partridge failed to read a GTFS feed. This is likely because the feed was improperly formatted. Traceback follows:")
             print(traceback.print_exception(e))
-
+        def print_bad_gtfs_warning(e):
+            print(f"WARN: GTFS feed could not be read, possibly because it was missing a required field. Exception is below:")
+            print(e)
+        # Get the service ids associated with the busiest service day in the feed (standard in Partridge example code)
         try:
             _, service_ids = ptg.read_busiest_date(str(self.path))
         except Exception as e:
             print_partridge_warning(e)
             return
+        # Create a Partridge feed object for the busiest service day
         view = {"trips.txt": {"service_id": service_ids}}
         try:
             self.feed = ptg.load_feed(str(self.path), view)
         except Exception as e:
             print_partridge_warning(e)
             return
+        # Create a routes df with some custom information
         try:
             self.routes = self.feed.routes[
                 ["route_id", "route_type"]
@@ -41,7 +43,6 @@ class GTFSFeedWrapper:
         except AttributeError as e:
             print_bad_gtfs_warning(e)
             return
-
         if "route_short_name" in self.feed.routes.columns:
             self.routes["route_short_name"] = self.feed.routes["route_short_name"]
         else:
@@ -50,10 +51,8 @@ class GTFSFeedWrapper:
             self.routes["route_long_name"] = self.feed.routes["route_long_name"]
         else:
             self.routes["route_long_name"] = np.nan
-        self.routes["route_aggregated_name"] = (self.routes["route_short_name"].fillna(
-            self.routes["route_long_name"]
-        )).fillna(
-            pd.Series(self.routes.index, index=self.routes.index)
+        self.routes["route_aggregated_name"] = self.routes["route_short_name"].fillna(
+            self.routes["route_long_name"].copy().fillna(pd.Series(self.routes.index, index=self.routes.index).dropna())
         )
         self.routes["route_mode_key"] = self.routes["route_type"].map(GTFS_ROUTE_TYPE_TO_ID_MAP)
         self.loaded = True
@@ -68,7 +67,7 @@ class GTFSFeedWrapper:
         trip_cutoff: int = 5,
     ) -> pd.DataFrame:
         if not self.loaded:
-            return None
+            return self._print_not_loaded_error()
         df_stops = self.feed.stops.copy()
         gdf_stops = gpd.GeoDataFrame(
             df_stops,
@@ -91,7 +90,7 @@ class GTFSFeedWrapper:
     
     def get_agency_name(self) -> str | float:
         if not self.loaded:
-            return None
+            return self._print_not_loaded_error()
         if len(self.feed.agency.agency_name == 0):
             return self.feed.agency.agency_name.iloc[0]
         else:
@@ -99,21 +98,26 @@ class GTFSFeedWrapper:
     
     def get_agency_url(self) -> str:
         if not self.loaded:
-            return None
+            return self._print_not_loaded_error()
         return self.feed.agency.agency_url
     
     def get_pretty_printed_headway(self, stop_headway_object: dict):
         if not self.loaded:
-            return None
+            return self._print_not_loaded_error()
         if safe_is_na(stop_headway_object):
             return np.nan
+        def get_headway_mins(headway_mins: int) -> str:
+            if headway_mins == -1:
+                return "Infrequent Service"
+            else:
+                return f"{headway_mins} mins"
         return ", ".join(
-            [f"{self.routes.loc[route_id[0], "route_aggregated_name"]} - {route_id[1]}: {stop_headway_object[route_id]} mins" for route_id in stop_headway_object]
+            [f"{self.routes.loc[route_id[0], "route_aggregated_name"]} - {route_id[1]}: {get_headway_mins(stop_headway_object[route_id])}" for route_id in stop_headway_object]
         ) 
 
     def get_primary_mode_from_headway(self, stop_headway_object: dict):
         if not self.loaded:
-            return None
+            return self._print_not_loaded_error()
         if safe_is_na(stop_headway_object):
             return np.nan
         route_ids = [route_direction_pair[0] for route_direction_pair in stop_headway_object.keys()]
@@ -122,6 +126,13 @@ class GTFSFeedWrapper:
         route_type_ids = self.routes.loc[route_ids, "route_mode_key"].unique()
         primary_mode_id = sorted(route_type_ids, key=lambda x: ROUTE_PRIORITY_MAP[x])[0]
         return ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[primary_mode_id]
+
+    def get_last_valid_date(self):
+        #TODO: implement
+        pass
+    
+    def get_feed_loaded_correctly(self):
+        return self.loaded
 
     # "Private"
     def _get_percentile_headway_minutes_for_stop(
@@ -168,7 +179,7 @@ class GTFSFeedWrapper:
                 #print(
                 #    f"WARN: {route_id}, {stop_id} has too few trips ({len(df_stop_times_for_specified_stop_route_direction_time)}) for a meaningful headway to be calculated, returning na"
                 #)
-                return np.nan
+                return -1
             headway_seconds = df_stop_times_for_specified_stop_route_direction_time.departure_time[1:].values - df_stop_times_for_specified_stop_route_direction_time.departure_time[:-1].values
             headway_minutes = (headway_seconds / 60.)
             return int(round(np.percentile(headway_minutes, percentile)))
@@ -179,6 +190,9 @@ class GTFSFeedWrapper:
         if df_route_and_direction_ids_serving_stop["percentile_headways"].isna().all():
             return np.nan
         return dict(df_route_and_direction_ids_serving_stop["percentile_headways"].dropna())
+    
+    def _print_not_loaded_error(self):
+        raise RuntimeError("Cannot call any functions on an unloaded feed")
 
 
 

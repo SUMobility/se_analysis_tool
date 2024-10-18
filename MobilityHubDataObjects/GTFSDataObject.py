@@ -49,8 +49,11 @@ class GTFSDataObject(DataObject):
                 return np.nan
             score = 0
             for headway in headway_dict.values():
-                # weird fugly sigmoid just as a demo
-                score += -10 * (1 / (1 + np.e ** (-(headway - 17)/5))) + 10.3229
+                if headway == -1:
+                    score += 0
+                else:
+                    # weird fugly sigmoid just as a demo
+                    score += max(0, -10 * (1 / (1 + np.e ** (-(headway - 17)/5))) + 10.3229)
             return score
         load_area_transformed = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
         # Query Transitland
@@ -67,7 +70,7 @@ class GTFSDataObject(DataObject):
                 "raw_feed_path",
                 "processed_file_path",
                 "last_fetched",
-                "last_valid_date",
+                #"last_valid_date",
                 "attribution_url",
                 "attribution_text",
                 "attribution_instructions",
@@ -100,29 +103,23 @@ class GTFSDataObject(DataObject):
             feed_id = feed["onestop_id"]
             print(f"INFO: Processing {feed_id}")
             # Get the most recent currently valid feed
-            df_feed_versions = pd.DataFrame(feed["feed_versions"])
-            df_feed_versions["date_fetched_dt"] = pd.to_datetime(df_feed_versions["fetched_at"])
-            df_feed_versions["min_date_dt"] = pd.to_datetime(df_feed_versions["earliest_calendar_date"])
-            df_feed_versions_relevant = df_feed_versions[df_feed_versions["min_date_dt"] <= dt.datetime.today()]
-            #TODO: need to load stops from cache
-            # Get feed metadata from the cache, if existent
-            newest_relevant_feed_version = df_feed_versions.loc[df_feed_versions_relevant["date_fetched_dt"].idxmax()]
+            current_feed_version = feed["feed_state"]["feed_version"]
+            if not current_feed_version:
+                df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
+                continue 
             download_new_file = True
             if feed_id in df_feeds_metadata.index and df_feeds_metadata.at[feed_id, "last_fetch_succeeded"]:
                 # The current feed is already in the cache, so we may not need to download a new file
                 cached_feed_metadata = df_feeds_metadata.loc[feed_id]
                 cached_last_downloaded = dt.datetime.fromisoformat(cached_feed_metadata["last_fetched"])
-                cached_end_of_life = dt.datetime.fromisoformat(cached_feed_metadata["last_valid_date"])
+                #cached_end_of_life = dt.datetime.fromisoformat(cached_feed_metadata["last_valid_date"])
                 cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
-                assert not safe_is_na(cached_last_downloaded) and not safe_is_na(cached_end_of_life) and not safe_is_na(cached_fetch_status)
-                if (
-                    ((dt.datetime.now(tz=dt.timezone.utc) - cached_last_downloaded) <= self.max_transitland_cache_life)
-                    and (cached_end_of_life >= dt.datetime.today())
-                ):
+                assert not safe_is_na(cached_last_downloaded) and not safe_is_na(cached_fetch_status)
+                if (dt.datetime.now(tz=dt.timezone.utc) - cached_last_downloaded) <= self.max_transitland_cache_life:
                     download_new_file = False
             if download_new_file:
                 # Download the feed and update the feed metadata
-                feed_url = newest_relevant_feed_version.loc["url"]
+                feed_url = current_feed_version["url"]
                 feed_output_path = self.gtfs_cache_path / f"GTFS_{feed['onestop_id']}.zip"
 
                 # Download the feed
@@ -138,12 +135,12 @@ class GTFSDataObject(DataObject):
                     print(f"WARN: Download for {feed_id} failed even with Playwright")
                     df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                     continue
-                if sha1_hash is not None and sha1_hash.hexdigest() != newest_relevant_feed_version["sha1"]:
+                if sha1_hash is not None and sha1_hash.hexdigest() != current_feed_version["sha1"]:
                     print(
-                        f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match the provided hash from Transitland {newest_relevant_feed_version['sha1']}"
+                        f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match the provided hash from Transitland {current_feed_version['sha1']}"
                     )
                 feed_last_fetched = dt.datetime.now(tz=dt.timezone.utc)
-                feed_end_of_life_dt = dt.datetime.fromisoformat(newest_relevant_feed_version["latest_calendar_date"])
+                #feed_end_of_life_dt = dt.datetime.fromisoformat(df_current_feed_version["latest_calendar_date"])
                 feed_attribution_url = get_str_or_na(feed["license"]["url"])
                 feed_attribution_text = get_str_or_na(feed["license"]["attribution_text"])
                 feed_attribution_instructions = get_str_or_na(feed["license"]["attribution_instructions"])
@@ -151,6 +148,9 @@ class GTFSDataObject(DataObject):
                 #TODO: figure out feed object to get agency name and url and run feedutils functions without needing to load a new feed each time
                 # Process frequent stops
                 feed_object = GTFSFeedWrapper(feed_output_path)
+                if not feed_object.get_feed_loaded_correctly():
+                    df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
+                    continue 
                 feed_name = feed_object.get_agency_name()
                 print(f"FEED NAME: {feed_name}")
                 feed_agency_url = feed_object.get_agency_url()
@@ -160,7 +160,7 @@ class GTFSDataObject(DataObject):
                     "url": feed_url,
                     "raw_feed_path": feed_output_path,
                     "last_fetched": feed_last_fetched,
-                    "last_valid_date": feed_end_of_life_dt,
+                    #"last_valid_date": feed_end_of_life_dt,
                     "attribution_url": feed_attribution_url,
                     "attribution_text": feed_attribution_text,
                     "attribution_instructions": feed_attribution_instructions,
@@ -178,6 +178,7 @@ class GTFSDataObject(DataObject):
                     filter_area_crs=GEODESIC_CRS,
                     trip_cutoff=5,
                 )
+                # Get displayed data about each stop
                 if df_feed_stops_with_headway is not None:
                     df_feed_stops_with_headway["min_headway"] = df_feed_stops_with_headway["headway"].map(
                         lambda x: np.nan if safe_is_na(x) else min(x.values())
@@ -262,6 +263,7 @@ class GTFSDataObject(DataObject):
     
 
     def _recursively_make_transitland_call(self, max_responses, initial_load_area_bounds, max_calls):
+        # Call transitland recursively with a smaller bounding box until it doesn't give an error
         def make_transitland_call(max_responses, load_area_bounds, after = None, max_calls=None):
             if max_calls is not None and max_calls <= 0:
                 raise RecursionError("Max Transitland calls exceeded")
