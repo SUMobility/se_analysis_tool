@@ -186,14 +186,15 @@ async def download_file_with_playwright(url: str, output_path: str | pathlib.Pat
         succeeded = await attempt_download(headless_browser)
         print("INFO: Download attempted")
         await headless_browser.close()
-        if not succeeded:
-            headed_browser = await p.firefox.launch(headless=False)        
-            succeeded = await attempt_download(headed_browser);
-            await headed_browser.close()
-    
-    if succeeded:
-        with open(output_path, "rb") as f:
-            if zipfile.is_zipfile(output_path):
-                return None
-            return get_sha1_hash(f, max_chunk_size)
+        if succeeded and zipfile.is_zipfile(output_path):
+            with open(output_path, "rb") as f:
+                return get_sha1_hash(f, max_chunk_size)
+        print("TRYING HEADLESS DOWNLOAD")
+        headed_browser = await p.firefox.launch(headless=False)        
+        succeeded = await attempt_download(headed_browser);
+        await headed_browser.close()
+        if succeeded and zipfile.is_zipfile(output_path):
+            with open(output_path, "rb") as f:
+                return get_sha1_hash(f, max_chunk_size)
+    print("WARN: Playwright download did not return zip")
     return None

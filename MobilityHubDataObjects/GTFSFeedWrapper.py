@@ -72,7 +72,7 @@ class GTFSFeedWrapper:
         df_stops = self.feed.stops.copy()
         gdf_stops = gpd.GeoDataFrame(
             df_stops,
-            geometry=gpd.points_from_xy(df_stops["stop_lat"], df_stops["stop_lon"]),
+            geometry=gpd.points_from_xy(df_stops["stop_lon"], df_stops["stop_lat"]),
             crs=GEODESIC_CRS,
         )
         gdf_stops_in_area = gdf_stops.loc[
