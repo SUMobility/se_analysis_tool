@@ -65,7 +65,7 @@ class FTAFacilityInventoryDataObject(DataObject):
                 return np.nan, np.nan
             try:
                 # Call OSMNX to find parking spaces
-                output = features_from_point((latitude, longitude), parking_query, dist=search_distance)
+                output = features_from_point((latitude, longitude), PARKING_QUERY, dist=search_distance)
             except OsmnxExceptions.InsufficientResponseError:
                 print(f"WARN: ({latitude}, {longitude}) could not be assigned to parking")
                 return np.nan, np.nan
@@ -92,10 +92,11 @@ class FTAFacilityInventoryDataObject(DataObject):
             df_inventory = pd.read_excel(self.fta_path)
         else:
             df_inventory = pd.read_excel(self.fta_path, sheet_name=self.sheet_name)
-            for column in PARKING_FILTER.keys():
-                df_inventory = df_inventory.loc[
-                    df_inventory[column].str.strip().isin(PARKING_FILTER[column])
-                ].copy()
+        for column in PARKING_FILTER.keys():
+            print(column)
+            df_inventory = df_inventory.loc[
+                df_inventory[column].str.strip().isin(PARKING_FILTER[column])
+            ].copy()
         # Get states that overlap with the load area
         gdf_states = gpd.read_file(self.states_path.resolve()).to_crs(load_area_crs)
         gdf_relevant_states = gdf_states.loc[gdf_states.intersects(load_area), "STUSPS"]
