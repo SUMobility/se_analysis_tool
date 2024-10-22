@@ -10,6 +10,7 @@ import geopandas as gpd
 import pathlib
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
+from MobilityHubDataObjects.scoreFunctions import score_transit_stops
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
@@ -228,7 +229,7 @@ class GTFSDataObject(SpatialDataObject):
                 ).size == 0
             )
             self.gdf = pd.concat(
-                [gdf_downloaded_frequent_stops.drop("headway", axis=1), gdf_cached_frequent_stops_to_keep]
+                [gdf_downloaded_frequent_stops, gdf_cached_frequent_stops_to_keep]
             )
             # Save result to a file
             self.gdf.to_file(stops_geometry_path)
@@ -238,6 +239,9 @@ class GTFSDataObject(SpatialDataObject):
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
         self.data_loaded = True
+
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(score_transit_stops, "headway")
 
     def get_folium_plot(self) -> folium.GeoJson:
         assert self.data_loaded

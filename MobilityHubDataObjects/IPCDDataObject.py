@@ -1,4 +1,5 @@
 import folium
+from pandas.core.api import Series as Series
 import shapely
 
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, transform_shapely_geometry
@@ -24,7 +25,7 @@ class IPCDDataObject(SpatialDataObject):
             ),
             ["BIKE_ID", "MODES_SERV", "geometry"]            
         ]
-    
+        
     def get_folium_plot(self) -> folium.GeoJson:
         # TODO: figure out error here
         intended_fields = ["BIKE_ID", "MODES_SERV"]

@@ -9,6 +9,8 @@ from .IPCDDataObject import *
 from .EJScreenDataObject import *
 from .GTFSFeedWrapper import *
 from .CityBikesDataObject import *
+from .scoreFunctions import *
+
 __all__ = [
     "APIDataObject",
     "AFDCApiDataObject",

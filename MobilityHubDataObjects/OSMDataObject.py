@@ -1,10 +1,12 @@
 import pathlib
 import geopandas as gpd
 import osmnx as ox
+from pandas.core.api import Series as Series
 import shapely
 import folium
 
 from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, small_geodesic_polygons_to_points, transform_shapely_geometry
 
 from .SpatialDataObject import SpatialDataObject
@@ -29,6 +31,9 @@ class OSMDataObject(SpatialDataObject):
             lambda geom: small_geodesic_polygons_to_points(geom, self.max_point_size)
         )
         self.gdf = gdf_osm_result
+
+    def get_scores(self) -> Series:
+        return self._get_scores_from_function(get_score_constant_value(5), [])
 
     def get_folium_plot(self):
         intended_fields = ["bicycle_parking", "capacity", "covered"]

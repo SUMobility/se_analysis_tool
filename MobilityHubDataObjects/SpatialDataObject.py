@@ -23,10 +23,19 @@ class SpatialDataObject(ABC):
     def get_folium_plot(self) -> folium.GeoJson:
         pass
 
-    def get_scores(self, score_function, score_fields) -> pd.Series:
+    @abstractmethod
+    def get_scores(self) -> pd.Series:
+        pass
+
+    def get_scores_with_geometry(self) -> gpd.GeoDataFrame:
+        return gpd.GeoDataFrame({"score": self.get_scores()}, geometry=self.gdf.geometry, index=self.gdf.index)
+
+    def _get_scores_from_function(self, score_function, score_fields) -> pd.Series:
         if type(score_fields) is list and len(score_fields) > 1:
             assert len(np.intersect1d(score_fields, self.gdf.columns)) == len(score_fields)
             return self.gdf.apply(score_function, axis=1)
+        elif type(score_fields) is list and len(score_fields) == 0:
+            return pd.Series(score_function(), index=self.gdf.index)
         elif type(score_fields) is list:
             assert score_fields[0] in self.gdf.columns
             return self.gdf[score_fields[0]].map(score_function)

@@ -1,7 +1,9 @@
 import folium
+from pandas.core.api import Series as Series
 import shapely
 from shapely.geometry import MultiPolygon as MultiPolygon, Polygon as Polygon
 
+from MobilityHubDataObjects.scoreFunctions import get_proportional_score
 from MobilityHubDataObjects.utils import transform_shapely_geometry
 from .SpatialDataObject import SpatialDataObject
 import geopandas as gpd
@@ -23,6 +25,9 @@ class EJScreenDataObject(SpatialDataObject):
             mask=transform_shapely_geometry(load_area_crs, 4269, load_area)
         )[["PTRAF", "P_PTRAF", "geometry"]]
         self.gdf = gdf_ejscreen.loc[gdf_ejscreen.within(transform_shapely_geometry(load_area_crs, 4269, load_area))]
+
+    def get_scores(self) -> Series:
+        return self._get_scores_from_function(get_proportional_score(100), "P_PTRAF")
 
     def get_folium_plot(self) -> folium.GeoJson:
         color_map = {

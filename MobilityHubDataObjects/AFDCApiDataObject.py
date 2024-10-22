@@ -3,6 +3,7 @@ import pathlib
 import pandas as pd
 from fiona.ogrext import DriverError
 
+from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays
 
 from .SpatialDataObject import SpatialDataObject
@@ -113,6 +114,9 @@ class AFDCApiDataObject(SpatialDataObject):
         self._cache_area = self._cache_area.union(search_point_buffer)
         self._gdf_cache = pd.concat([self._gdf_cache, api_result]).drop_duplicates(subset=["id"])
         return api_result"""
+
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(get_score_constant_value(5), [])
 
     def save_cache_to_file(self):
         self._gdf_cache.to_file(str(self.cache_path.resolve()), index=False)

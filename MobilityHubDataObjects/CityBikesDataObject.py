@@ -66,7 +66,10 @@ class CityBikesDataObject(SpatialDataObject):
         ].rename(
             columns={"name": "system_name"}
         )
-    
+
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(lambda x: (2 if x else 0) + 5, ["has_ebikes"])
+
     def get_folium_plot(self) -> GeoJson:
         citybikes_popup = folium.GeoJsonPopup(
             fields=["system_name", "system", "station_name", 'capacity', "has_ebikes"],

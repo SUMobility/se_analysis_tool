@@ -9,6 +9,7 @@ from osmnx import geocoder, features_from_point
 from osmnx import _errors as OsmnxExceptions
 
 from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, safe_is_na
 
 from .SpatialDataObject import SpatialDataObject
@@ -206,6 +207,8 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         # Save the responses that are within the load_area TODO: add an area filter earlier up to avoid geocoding unnecessary places
         self.gdf = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
 
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(get_score_constant_value(5), [])
 
     def get_folium_plot(self) -> folium.GeoJson:
         fields_to_display = ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
