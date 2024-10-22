@@ -3,26 +3,26 @@ import shapely
 from shapely.geometry import MultiPolygon as MultiPolygon, Polygon as Polygon
 
 from MobilityHubDataObjects.utils import transform_shapely_geometry
-from .DataObject import DataObject
+from .SpatialDataObject import SpatialDataObject
 import geopandas as gpd
 import math
 import numpy as np
 
-class EJScreenDataObject(DataObject):
-    data_object = gpd.GeoDataFrame
+class EJScreenDataObject(SpatialDataObject):
+    gdf = gpd.GeoDataFrame
     def __init__(self, ejscreen_path):
         self.path = ejscreen_path
     
     def load_data(
-            self,
-            load_area: (shapely.MultiPolygon | shapely.Polygon | None),
-            load_area_crs: int = 4326,
-        ) -> None:
+        self,
+        load_area: (shapely.MultiPolygon | shapely.Polygon),
+        load_area_crs: int
+    ) -> None:
         gdf_ejscreen = gpd.read_file(
             self.path,
             mask=transform_shapely_geometry(load_area_crs, 4269, load_area)
         )[["PTRAF", "P_PTRAF", "geometry"]]
-        self.data_object = gdf_ejscreen.loc[gdf_ejscreen.within(transform_shapely_geometry(load_area_crs, 4269, load_area))]
+        self.gdf = gdf_ejscreen.loc[gdf_ejscreen.within(transform_shapely_geometry(load_area_crs, 4269, load_area))]
 
     def get_folium_plot(self) -> folium.GeoJson:
         color_map = {
@@ -39,7 +39,7 @@ class EJScreenDataObject(DataObject):
             9: "purple",
             10: "purple"
         }
-        df_to_render = self.data_object.copy()
+        df_to_render = self.gdf.copy()
         df_to_render["color"] = df_to_render["P_PTRAF"].map(
             lambda x: "black" if type(x) is float and np.isnan(x) else color_map[math.floor(x * 0.1)]
         )

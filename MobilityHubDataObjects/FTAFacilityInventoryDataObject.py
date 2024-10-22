@@ -11,7 +11,7 @@ from osmnx import _errors as OsmnxExceptions
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.utils import basic_circle_marker, safe_is_na
 
-from .DataObject import DataObject
+from .SpatialDataObject import SpatialDataObject
 
 PARKING_SEARCH_DISTANCE_METERS_ADDRESS = 80
 PARKING_SEARCH_DISTANCE_METERS_LAT_LON = 40
@@ -27,8 +27,8 @@ PARKING_FILTER = { # TODO: delete me
     ],
 }
 
-class FTAFacilityInventoryDataObject(DataObject):
-    data_object = gpd.GeoDataFrame
+class FTAFacilityInventoryDataObject(SpatialDataObject):
+    gdf = gpd.GeoDataFrame
     def __init__(
         self,
         fta_path: (str | pathlib.Path),
@@ -42,7 +42,7 @@ class FTAFacilityInventoryDataObject(DataObject):
     def load_data(
         self,
         load_area: (shapely.MultiPolygon | shapely.Polygon),
-        load_area_crs: int = 4326,
+        load_area_crs: int
     ) -> None:
         # Helper functions
         def safe_geocode(query_address: str) -> gpd.GeoDataFrame:
@@ -204,22 +204,22 @@ class FTAFacilityInventoryDataObject(DataObject):
         )
         gdf_inventory_combined = pd.concat([gdf_inventory_geodesic, gdf_spaces_points])
         # Save the responses that are within the load_area TODO: add an area filter earlier up to avoid geocoding unnecessary places
-        self.data_object = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
+        self.gdf = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
 
 
     def get_folium_plot(self) -> folium.GeoJson:
         fields_to_display = ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
-        print(self.data_object.geometry.isna().sum())
-        print((~self.data_object.geometry.is_valid).sum())
+        print(self.gdf.geometry.isna().sum())
+        print((~self.gdf.geometry.is_valid).sum())
         fta_popup = folium.GeoJsonPopup(
             fields=list(np.intersect1d(
                 fields_to_display,
-                self.data_object.columns
+                self.gdf.columns
             ))
         )
         light_blue_color = "#12aae6"
         fta_geojson = folium.GeoJson(
-            self.data_object[fields_to_display + ["geometry"]],
+            self.gdf[fields_to_display + ["geometry"]],
             marker=basic_circle_marker(light_blue_color),
             style_function = lambda _: {"radius": 3, "fillcolor": light_blue_color},
             popup=fta_popup

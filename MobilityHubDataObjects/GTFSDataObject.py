@@ -2,8 +2,8 @@ import fiona
 import folium
 import numpy as np
 import requests
-from shapely import MultiPolygon, Polygon
-from MobilityHubDataObjects import DataObject
+import shapely
+from MobilityHubDataObjects import SpatialDataObject
 import datetime as dt
 import pandas as pd
 import geopandas as gpd
@@ -13,10 +13,10 @@ from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
-class GTFSDataObject(DataObject):
+class GTFSDataObject(SpatialDataObject):
     df_feeds_metadata = None
     load_area = None
-    gdf_all_frequent_stops = gpd.GeoDataFrame()
+    gdf = gpd.GeoDataFrame()
     data_loaded = False
 
     def __init__(
@@ -40,7 +40,11 @@ class GTFSDataObject(DataObject):
         self.transitland_last_queried = None
         self.api_key_path = api_key_path
 
-    async def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
+    async def load_data(
+        self,
+        load_area: (shapely.MultiPolygon | shapely.Polygon),
+        load_area_crs: int
+    ) -> None:
         MAX_RESPONSES_PER_PAGE = 100
         MAX_CHUNK_SIZE = 65536
         MAX_CALLS = 100
@@ -223,13 +227,13 @@ class GTFSDataObject(DataObject):
                     gdf_cached_frequent_stops_to_keep["agency_id"].unique(),
                 ).size == 0
             )
-            self.gdf_all_frequent_stops = pd.concat(
+            self.gdf = pd.concat(
                 [gdf_downloaded_frequent_stops.drop("headway", axis=1), gdf_cached_frequent_stops_to_keep]
             )
             # Save result to a file
-            self.gdf_all_frequent_stops.to_file(stops_geometry_path)
+            self.gdf.to_file(stops_geometry_path)
         else:
-            self.gdf_all_frequent_stops = gdf_cached_frequent_stops
+            self.gdf = gdf_cached_frequent_stops
         self.df_feeds_metadata = df_feeds_metadata
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
@@ -240,7 +244,7 @@ class GTFSDataObject(DataObject):
         intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
         intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
         fields, aliases = filter_two_corresponding_arrays(
-            self.gdf_all_frequent_stops.columns,
+            self.gdf.columns,
             intended_fields,
             intended_aliases,
         )
@@ -248,9 +252,9 @@ class GTFSDataObject(DataObject):
             fields=fields,
             alias=aliases,
         )
-        max_sqrt_score = np.percentile(np.sqrt(self.gdf_all_frequent_stops["score"]), 98)
+        max_sqrt_score = np.percentile(np.sqrt(self.gdf["score"]), 98)
         gtfs_geojson = folium.GeoJson(
-            self.gdf_all_frequent_stops,
+            self.gdf,
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function = lambda x: {

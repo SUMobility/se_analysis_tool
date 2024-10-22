@@ -1,6 +1,6 @@
 from .FTAFacilityInventoryDataObject import *
 from .OSMDataObject import *
-from .DataObject import *
+from .SpatialDataObject import *
 from .AFDCApiDataObject import *
 from .APIDataObject import *
 from .GTFSDataObject import *
@@ -13,7 +13,7 @@ __all__ = [
     "APIDataObject",
     "AFDCApiDataObject",
     "constants",
-    "DataObject",
+    "SpatialDataObject",
     "EJScreenDataObject",
     "GTFSFeedWrapper",
     "FTAFacilityInventoryDataObject",
