@@ -1,8 +1,10 @@
+from typing import Callable
 import folium
 from pandas.core.api import Series as Series
 import shapely
 from shapely.geometry import MultiPolygon as MultiPolygon, Polygon as Polygon
 
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_proportional_score
 from MobilityHubDataObjects.utils import transform_shapely_geometry
 from .SpatialDataObject import SpatialDataObject
@@ -28,6 +30,9 @@ class EJScreenDataObject(SpatialDataObject):
 
     def get_scores(self) -> Series:
         return self._get_scores_from_function(get_proportional_score(100), "P_PTRAF")
+
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(1000)
 
     def get_folium_plot(self) -> folium.GeoJson:
         color_map = {

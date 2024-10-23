@@ -1,8 +1,10 @@
 import pathlib
+from typing import Callable
 
 import pandas as pd
 from fiona.ogrext import DriverError
 
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays
 
@@ -117,6 +119,9 @@ class AFDCApiDataObject(SpatialDataObject):
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(get_score_constant_value(5), [])
+    
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500)
 
     def save_cache_to_file(self):
         self._gdf_cache.to_file(str(self.cache_path.resolve()), index=False)

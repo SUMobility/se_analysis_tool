@@ -5,6 +5,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
+from typing import Callable
 
 
 class SpatialDataObject(ABC):
@@ -25,6 +26,10 @@ class SpatialDataObject(ABC):
 
     @abstractmethod
     def get_scores(self) -> pd.Series:
+        pass
+
+    @abstractmethod
+    def get_score_decay_function(self) -> Callable[[float], float]:
         pass
 
     def get_scores_with_geometry(self) -> gpd.GeoDataFrame:

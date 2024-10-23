@@ -1,4 +1,5 @@
 import pathlib
+from typing import Callable
 import geopandas as gpd
 import osmnx as ox
 from pandas.core.api import Series as Series
@@ -6,6 +7,7 @@ import shapely
 import folium
 
 from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, small_geodesic_polygons_to_points, transform_shapely_geometry
 
@@ -31,6 +33,9 @@ class OSMDataObject(SpatialDataObject):
             lambda geom: small_geodesic_polygons_to_points(geom, self.max_point_size)
         )
         self.gdf = gdf_osm_result
+
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500)
 
     def get_scores(self) -> Series:
         return self._get_scores_from_function(get_score_constant_value(5), [])

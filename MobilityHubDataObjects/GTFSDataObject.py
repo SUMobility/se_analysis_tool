@@ -1,3 +1,4 @@
+from typing import Callable
 import fiona
 import folium
 import numpy as np
@@ -10,7 +11,8 @@ import geopandas as gpd
 import pathlib
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
-from MobilityHubDataObjects.scoreFunctions import score_transit_stops
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
+from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
@@ -241,7 +243,12 @@ class GTFSDataObject(SpatialDataObject):
         self.data_loaded = True
 
     def get_scores(self) -> pd.Series:
-        return self._get_scores_from_function(score_transit_stops, "headway")
+        #return self._get_scores_from_function(score_transit_stops, "headway")
+        #TODO: make the above actually work, headway is all nan
+        return self._get_scores_from_function(get_score_constant_value(6), [])
+
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500)
 
     def get_folium_plot(self) -> folium.GeoJson:
         assert self.data_loaded
@@ -267,7 +274,6 @@ class GTFSDataObject(SpatialDataObject):
             }
         )
         return gtfs_geojson
-    
     
 
     def _recursively_make_transitland_call(self, max_responses, initial_load_area_bounds, max_calls):

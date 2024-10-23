@@ -10,6 +10,7 @@ from .EJScreenDataObject import *
 from .GTFSFeedWrapper import *
 from .CityBikesDataObject import *
 from .scoreFunctions import *
+from .ScoreWrapper import *
 
 __all__ = [
     "APIDataObject",
@@ -23,5 +24,6 @@ __all__ = [
     "IPCDDataObject",
     "OSMDataObject",
     "CityBikesDataObject",
+    "ScoreWrapper"
 ]
 #%%

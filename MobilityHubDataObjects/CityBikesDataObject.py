@@ -1,4 +1,5 @@
 from io import StringIO
+from typing import Callable
 import folium
 from folium.features import GeoJson
 import numpy as np
@@ -7,6 +8,7 @@ import geopandas as gpd
 import requests
 import shapely
 from MobilityHubDataObjects import SpatialDataObject, constants
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, transform_shapely_geometry
 
 COUNTRY_CODE_US = "US"
@@ -69,6 +71,9 @@ class CityBikesDataObject(SpatialDataObject):
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(lambda x: (2 if x else 0) + 5, ["has_ebikes"])
+
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500) 
 
     def get_folium_plot(self) -> GeoJson:
         citybikes_popup = folium.GeoJsonPopup(
