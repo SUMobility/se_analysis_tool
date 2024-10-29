@@ -1,6 +1,6 @@
 from .FTAFacilityInventoryDataObject import *
 from .OSMDataObject import *
-from .DataObject import *
+from .SpatialDataObject import *
 from .AFDCApiDataObject import *
 from .APIDataObject import *
 from .GTFSDataObject import *
@@ -9,11 +9,14 @@ from .IPCDDataObject import *
 from .EJScreenDataObject import *
 from .GTFSFeedWrapper import *
 from .CityBikesDataObject import *
+from .scoreFunctions import *
+from .ScoreWrapper import *
+
 __all__ = [
     "APIDataObject",
     "AFDCApiDataObject",
     "constants",
-    "DataObject",
+    "SpatialDataObject",
     "EJScreenDataObject",
     "GTFSFeedWrapper",
     "FTAFacilityInventoryDataObject",
@@ -21,5 +24,6 @@ __all__ = [
     "IPCDDataObject",
     "OSMDataObject",
     "CityBikesDataObject",
+    "ScoreWrapper"
 ]
 #%%

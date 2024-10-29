@@ -1,21 +1,27 @@
 from io import StringIO
+from typing import Callable
 import folium
 from folium.features import GeoJson
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 import requests
-from shapely import MultiPolygon, Polygon
-from MobilityHubDataObjects import DataObject, constants
+import shapely
+from MobilityHubDataObjects import SpatialDataObject, constants
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, transform_shapely_geometry
 
 COUNTRY_CODE_US = "US"
 
-class CityBikesDataObject(DataObject):
+class CityBikesDataObject(SpatialDataObject):
     def __init__(self, citybikes_url: str) -> None:
         self.citybikes_url = citybikes_url
 
-    def load_data(self, load_area: MultiPolygon | Polygon, load_area_crs: int = 4326) -> None:
+    def load_data(
+        self,
+        load_area: (shapely.MultiPolygon | shapely.Polygon),
+        load_area_crs: int
+    ) -> None:
         load_area_transformed = transform_shapely_geometry(load_area_crs, constants.GEODESIC_CRS, load_area)
         citybikes_feeds_json = download_json_safely(self.citybikes_url + "/v2/networks") #TODO: use urllib for this
         df_citybikes_feeds = pd.DataFrame.from_records(citybikes_feeds_json["networks"])
@@ -56,20 +62,26 @@ class CityBikesDataObject(DataObject):
             geometry=gpd.points_from_xy(df_citybikes_stations["longitude"], df_citybikes_stations["latitude"]),
             crs=constants.GEODESIC_CRS
         )
-        self.data_object = gdf_citybikes_stations.loc[
+        self.gdf = gdf_citybikes_stations.loc[
             gdf_citybikes_stations.within(load_area_transformed),
             ["id", "name", "system", "station_name", "capacity", "has_ebikes", "geometry"]
         ].rename(
             columns={"name": "system_name"}
         )
-    
+
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(lambda x: (2 if x else 0) + 5, ["has_ebikes"])
+
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500) 
+
     def get_folium_plot(self) -> GeoJson:
         citybikes_popup = folium.GeoJsonPopup(
             fields=["system_name", "system", "station_name", 'capacity', "has_ebikes"],
             aliases=["System Name", "Operator","Station Name", "Capacity", "Has Ebikes?"]
         )
         return folium.GeoJson(
-            self.data_object,
+            self.gdf,
             popup=citybikes_popup,
             marker=basic_circle_marker("green")
         )

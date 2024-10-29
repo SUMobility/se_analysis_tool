@@ -2,6 +2,7 @@ import hashlib
 import pathlib
 import subprocess
 import folium
+import pandas as pd
 from pyproj import Transformer, Geod
 import numpy as np
 import requests
@@ -9,6 +10,9 @@ import shapely
 import datetime as dt
 from playwright.async_api import async_playwright, Playwright, Error, TimeoutError
 import zipfile
+import geopandas as gpd
+
+from MobilityHubDataObjects import SpatialDataObject
 
 def basic_circle_marker(fillColor: str, **kwargs) -> folium.CircleMarker:
     kwargs_to_pass = dict(kwargs)
@@ -36,7 +40,7 @@ def transform_shapely_geometry(
 def safe_is_na(value: object) -> bool:
      return value is None or (type(value) == float and np.isnan(value))
 
-def get_str_or_na(value : (str | float | None)) -> (str | float):
+def get_str_or_na(value : (int | float | str | None)) -> (str | float):
     if type(value) != str and (np.isnan(value) or value is None):
             return np.nan
     return str(value)
@@ -198,3 +202,13 @@ async def download_file_with_playwright(url: str, output_path: str | pathlib.Pat
                 return get_sha1_hash(f, max_chunk_size)
     print("WARN: Playwright download did not return zip")
     return None
+
+def get_scores_for_all_objects(objects: list[SpatialDataObject], object_names: list[str]) -> gpd.GeoDataFrame:
+    assert len(objects) == len(object_names)
+    gdfs = []
+    for object, name in zip(objects, object_names):
+        gdf = object.get_scores_with_geometry()
+        gdf["type"] = name
+        gdfs.append(gdf)
+    return pd.concat(gdfs)
+    

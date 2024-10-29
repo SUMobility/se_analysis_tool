@@ -127,6 +127,11 @@ class GTFSFeedWrapper:
         primary_mode_id = sorted(route_type_ids, key=lambda x: ROUTE_PRIORITY_MAP[x])[0]
         return ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[primary_mode_id]
 
+    def get_headway_string_from_headway(self, stop_headway_object: dict) -> list[float]:
+        if safe_is_na(stop_headway_object):
+            return ""
+        return ",".join(map(lambda x: str(x), filter(lambda x: x > 0, stop_headway_object.values())))
+
     def get_last_valid_date(self):
         #TODO: implement
         pass

@@ -1,11 +1,14 @@
 import pathlib
+from typing import Callable
 
 import pandas as pd
 from fiona.ogrext import DriverError
 
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
+from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays
 
-from .DataObject import DataObject
+from .SpatialDataObject import SpatialDataObject
 import geopandas as gpd
 from pyogrio.errors import DataSourceError
 from pyproj import CRS, Transformer
@@ -16,8 +19,8 @@ from .constants import MILES_TO_METERS_FACTOR, METERS_TO_MILES_FACTOR
 
 TEMP_CRS = "EPSG:6423"
 
-class AFDCApiDataObject(DataObject):
-    data_object = gpd.GeoDataFrame
+class AFDCApiDataObject(SpatialDataObject):
+    gdf = gpd.GeoDataFrame
     def __init__(self, source, cache_path, api_key_path):
         # TODO: ping api url to make sure it works
         self.source = source
@@ -51,7 +54,7 @@ class AFDCApiDataObject(DataObject):
     def get_folium_plot(self) -> folium.GeoJson:
         intended_fields = ["station_name", "street_address", "ev_network", "ev_network_web"]
         intended_aliases = ["Name", "Address", "Network", "Website"]
-        fields, aliases = filter_two_corresponding_arrays(self.data_object.columns, intended_fields, intended_aliases)
+        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, intended_fields, intended_aliases)
         afdc_popup = folium.GeoJsonPopup(
             fields=fields,
             aliases=aliases,
@@ -59,15 +62,18 @@ class AFDCApiDataObject(DataObject):
             labels=True,
         )
         afdc_geojson = folium.GeoJson(
-            self.data_object[["station_name", "street_address", "ev_network", "ev_network_web", "geometry"]],
+            self.gdf[["station_name", "street_address", "ev_network", "ev_network_web", "geometry"]],
             marker=basic_circle_marker("blue"),
             popup=afdc_popup,
         )
         return afdc_geojson
 
-    def load_data(self, load_area: (shapely.Polygon | shapely.MultiPolygon)) -> None:
-        #TODO: add assertions for latitude, longitude, radius, make sure they're within parameters
-        transformer = Transformer.from_crs(4269, TEMP_CRS, always_xy=True)
+    def load_data(
+        self,
+        load_area: (shapely.MultiPolygon | shapely.Polygon),
+        load_area_crs: int
+    ) -> None:
+        transformer = Transformer.from_crs(load_area_crs, TEMP_CRS, always_xy=True)
         load_area_transformed = shapely.ops.transform(
             transformer.transform,
             load_area,
@@ -92,7 +98,7 @@ class AFDCApiDataObject(DataObject):
             load_area_centroid_lat_lon.x,
             load_area_max_distance * METERS_TO_MILES_FACTOR,
         )
-        self.data_object = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)].copy()
+        self.gdf = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)].copy()
         #TODO: fix the below function that adds caching
         """"# Check cache
         transformer = Transformer.from_crs(4269, CRS, always_xy=True)
@@ -110,6 +116,12 @@ class AFDCApiDataObject(DataObject):
         self._cache_area = self._cache_area.union(search_point_buffer)
         self._gdf_cache = pd.concat([self._gdf_cache, api_result]).drop_duplicates(subset=["id"])
         return api_result"""
+
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(get_score_constant_value(5), [])
+    
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500)
 
     def save_cache_to_file(self):
         self._gdf_cache.to_file(str(self.cache_path.resolve()), index=False)

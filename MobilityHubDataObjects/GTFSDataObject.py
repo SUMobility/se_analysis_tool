@@ -1,22 +1,25 @@
+from typing import Callable
 import fiona
 import folium
 import numpy as np
 import requests
-from shapely import MultiPolygon, Polygon
-from MobilityHubDataObjects import DataObject
+import shapely
+from MobilityHubDataObjects import SpatialDataObject
 import datetime as dt
 import pandas as pd
 import geopandas as gpd
 import pathlib
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
+from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
+from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
-class GTFSDataObject(DataObject):
+class GTFSDataObject(SpatialDataObject):
     df_feeds_metadata = None
     load_area = None
-    gdf_all_frequent_stops = gpd.GeoDataFrame()
+    gdf = gpd.GeoDataFrame()
     data_loaded = False
 
     def __init__(
@@ -40,7 +43,11 @@ class GTFSDataObject(DataObject):
         self.transitland_last_queried = None
         self.api_key_path = api_key_path
 
-    async def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
+    async def load_data(
+        self,
+        load_area: (shapely.MultiPolygon | shapely.Polygon),
+        load_area_crs: int
+    ) -> None:
         MAX_RESPONSES_PER_PAGE = 100
         MAX_CHUNK_SIZE = 65536
         MAX_CALLS = 100
@@ -186,6 +193,7 @@ class GTFSDataObject(DataObject):
                     df_feed_stops_with_headway["pretty_printed_headway"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_pretty_printed_headway
                     )
+                    df_feed_stops_with_headway["headway_string"] = df_feed_stops_with_headway["headway"].map(feed_object.get_headway_string_from_headway)
                     df_feed_stops_with_headway["score"] = df_feed_stops_with_headway["headway"].map(score_stop)
                     df_feed_stops_with_headway["primary_mode"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_primary_mode_from_headway
@@ -223,24 +231,30 @@ class GTFSDataObject(DataObject):
                     gdf_cached_frequent_stops_to_keep["agency_id"].unique(),
                 ).size == 0
             )
-            self.gdf_all_frequent_stops = pd.concat(
-                [gdf_downloaded_frequent_stops.drop("headway", axis=1), gdf_cached_frequent_stops_to_keep]
-            )
+            self.gdf = pd.concat(
+                [gdf_downloaded_frequent_stops, gdf_cached_frequent_stops_to_keep]
+            ).drop("headway", axis=1)
             # Save result to a file
-            self.gdf_all_frequent_stops.to_file(stops_geometry_path)
+            self.gdf.to_file(stops_geometry_path)
         else:
-            self.gdf_all_frequent_stops = gdf_cached_frequent_stops
+            self.gdf = gdf_cached_frequent_stops
         self.df_feeds_metadata = df_feeds_metadata
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
         self.data_loaded = True
+
+    def get_scores(self) -> pd.Series:
+        return self._get_scores_from_function(score_transit_stops, "headway_string")
+
+    def get_score_decay_function(self) -> Callable[[float], float]:
+        return get_linear_decay_function(500)
 
     def get_folium_plot(self) -> folium.GeoJson:
         assert self.data_loaded
         intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
         intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
         fields, aliases = filter_two_corresponding_arrays(
-            self.gdf_all_frequent_stops.columns,
+            self.gdf.columns,
             intended_fields,
             intended_aliases,
         )
@@ -248,9 +262,9 @@ class GTFSDataObject(DataObject):
             fields=fields,
             alias=aliases,
         )
-        max_sqrt_score = np.percentile(np.sqrt(self.gdf_all_frequent_stops["score"]), 98)
+        max_sqrt_score = np.percentile(np.sqrt(self.gdf["score"]), 98)
         gtfs_geojson = folium.GeoJson(
-            self.gdf_all_frequent_stops,
+            self.gdf.drop("headway_list", axis=1, errors="ignore"),
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function = lambda x: {
@@ -259,7 +273,6 @@ class GTFSDataObject(DataObject):
             }
         )
         return gtfs_geojson
-    
     
 
     def _recursively_make_transitland_call(self, max_responses, initial_load_area_bounds, max_calls):

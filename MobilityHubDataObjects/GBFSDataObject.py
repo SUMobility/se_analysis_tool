@@ -6,7 +6,7 @@ import geopandas as gpd
 import requests
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
-from MobilityHubDataObjects import DataObject, constants
+from MobilityHubDataObjects import SpatialDataObject, constants
 from MobilityHubDataObjects.utils import safe_is_na, transform_shapely_geometry
 
 COUNTRY_KEY = "COUNTRY",
@@ -33,7 +33,7 @@ GBFS_SHEET_HEADERS_ORDER = [
     GBFS_SHEET_HEADERS[VERSIONS_KEY]
 ]
 
-class GBFSDataObject(DataObject):
+class GBFSDataObject(SpatialDataObject):
     def __init__(
         self,
         feeds_csv_url: str,
