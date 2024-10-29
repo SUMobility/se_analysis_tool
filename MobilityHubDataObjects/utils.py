@@ -40,7 +40,7 @@ def transform_shapely_geometry(
 def safe_is_na(value: object) -> bool:
      return value is None or (type(value) == float and np.isnan(value))
 
-def get_str_or_na(value : (str | float | None)) -> (str | float):
+def get_str_or_na(value : (int | float | str | None)) -> (str | float):
     if type(value) != str and (np.isnan(value) or value is None):
             return np.nan
     return str(value)

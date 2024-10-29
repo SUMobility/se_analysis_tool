@@ -193,6 +193,7 @@ class GTFSDataObject(SpatialDataObject):
                     df_feed_stops_with_headway["pretty_printed_headway"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_pretty_printed_headway
                     )
+                    df_feed_stops_with_headway["headway_string"] = df_feed_stops_with_headway["headway"].map(feed_object.get_headway_string_from_headway)
                     df_feed_stops_with_headway["score"] = df_feed_stops_with_headway["headway"].map(score_stop)
                     df_feed_stops_with_headway["primary_mode"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_primary_mode_from_headway
@@ -232,7 +233,7 @@ class GTFSDataObject(SpatialDataObject):
             )
             self.gdf = pd.concat(
                 [gdf_downloaded_frequent_stops, gdf_cached_frequent_stops_to_keep]
-            )
+            ).drop("headway", axis=1)
             # Save result to a file
             self.gdf.to_file(stops_geometry_path)
         else:
@@ -243,9 +244,7 @@ class GTFSDataObject(SpatialDataObject):
         self.data_loaded = True
 
     def get_scores(self) -> pd.Series:
-        #return self._get_scores_from_function(score_transit_stops, "headway")
-        #TODO: make the above actually work, headway is all nan
-        return self._get_scores_from_function(get_score_constant_value(6), [])
+        return self._get_scores_from_function(score_transit_stops, "headway_string")
 
     def get_score_decay_function(self) -> Callable[[float], float]:
         return get_linear_decay_function(500)
@@ -265,7 +264,7 @@ class GTFSDataObject(SpatialDataObject):
         )
         max_sqrt_score = np.percentile(np.sqrt(self.gdf["score"]), 98)
         gtfs_geojson = folium.GeoJson(
-            self.gdf,
+            self.gdf.drop("headway_list", axis=1, errors="ignore"),
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function = lambda x: {
