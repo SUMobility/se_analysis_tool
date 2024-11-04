@@ -2,7 +2,8 @@ env
 __pycache__
 rawData/*
 !rawData/.gitkeep
-cache/*
+cache/gtfs_cache/*
+cache/osmnx_cache/*
 !cache/gtfs_cache/.gitkeep
 !cache/osmnx_cache/.gitkeep
 gtfs/
