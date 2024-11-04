@@ -93,7 +93,6 @@ prompt_toolkit==3.0.47
 psutil==6.0.0
 ptyprocess==0.7.0
 pure_eval==0.2.3
-pybikes @ git+https://github.com/eskerda/pybikes.git@01c02431fad5a67934828e9451c34171dffe2849
 pycparser==2.22
 pyee==12.0.0
 Pygments==2.18.0
