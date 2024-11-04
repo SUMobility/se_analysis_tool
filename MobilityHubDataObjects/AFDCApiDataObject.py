@@ -64,7 +64,6 @@ class AFDCApiDataObject(SpatialDataObject):
         load_area_max_distance = -1
         if type(load_area_transformed) is shapely.Polygon:
             load_area_max_distance = get_max_distance_from_centroid(load_area_transformed)
-            print(load_area_max_distance)
         else:
             load_area_max_distance = max(map(get_max_distance_from_centroid, load_area_transformed.geoms))
         gdf_afdc_response = self._call_afdc_api_ev_chargers(
