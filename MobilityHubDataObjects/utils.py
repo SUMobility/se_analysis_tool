@@ -193,7 +193,7 @@ async def download_file_with_playwright(url: str, output_path: str | pathlib.Pat
         if succeeded and zipfile.is_zipfile(output_path):
             with open(output_path, "rb") as f:
                 return get_sha1_hash(f, max_chunk_size)
-        print("TRYING HEADLESS DOWNLOAD")
+        print("INFO: Trying a headless download. A browser window will now open for 10 seconds")
         headed_browser = await p.firefox.launch(headless=False)        
         succeeded = await attempt_download(headed_browser);
         await headed_browser.close()

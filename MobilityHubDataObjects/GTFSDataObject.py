@@ -106,7 +106,6 @@ class GTFSDataObject(SpatialDataObject):
         frequent_stops_gdf_list = []
         processed_agency_ids = []
         for feed in transitland_feeds:
-            print(feed)
             feed_id = feed["onestop_id"]
             print(f"INFO: Processing {feed_id}")
             # Get the most recent currently valid feed
@@ -213,8 +212,6 @@ class GTFSDataObject(SpatialDataObject):
                         )
                     processed_agency_ids.append(feed_id)        
         # Merge newly downloaded and cached stops
-        for i in frequent_stops_gdf_list:
-            print(i.head())
         print(f"PRINTING ALL PROCESSED AGENCY IDS: {", ".join(processed_agency_ids)}")
         
         if len(frequent_stops_gdf_list) > 0:

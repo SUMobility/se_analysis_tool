@@ -98,7 +98,6 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         else:
             df_inventory = pd.read_excel(self.fta_path, sheet_name=self.sheet_name)
         for column in PARKING_FILTER.keys():
-            print(column)
             df_inventory = df_inventory.loc[
                 df_inventory[column].str.strip().isin(PARKING_FILTER[column])
             ].copy()
@@ -222,8 +221,6 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
 
     def get_folium_plot(self) -> folium.GeoJson:
         fields_to_display = ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
-        print(self.gdf.geometry.isna().sum())
-        print((~self.gdf.geometry.is_valid).sum())
         fta_popup = folium.GeoJsonPopup(
             fields=list(np.intersect1d(
                 fields_to_display,

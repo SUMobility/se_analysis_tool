@@ -53,7 +53,6 @@ class EJScreenDataObject(SpatialDataObject):
         df_to_render["color"] = df_to_render["P_PTRAF"].map(
             lambda x: "black" if type(x) is float and np.isnan(x) else color_map[math.floor(x * 0.1)]
         )
-        print(df_to_render["color"].value_counts())
         ejscreen_popup = folium.GeoJsonPopup(
             fields = ["PTRAF", "P_PTRAF"],
             aliases=["Traffic Proximity & Volume", "National Traffic Proximity & Volume Percentile"]
