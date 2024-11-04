@@ -3,5 +3,6 @@ __pycache__
 rawData/*
 !rawData/.gitkeep
 cache/*
-!cache/.gitkeep
+!cache/gtfs_cache/.gitkeep
+!cache/osmnx_cache/.gitkeep
 gtfs/

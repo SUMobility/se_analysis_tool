@@ -6,7 +6,7 @@ import geopandas as gpd
 import shapely
 from pyproj import CRS
 import folium
-from osmnx import geocoder, features_from_point 
+import osmnx as ox
 from osmnx import _errors as OsmnxExceptions
 
 from MobilityHubDataObjects.constants import GEODESIC_CRS
@@ -36,10 +36,12 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         self,
         fta_path: (str | pathlib.Path),
         states_path: (str | pathlib.Path),
+        osm_cache_folder: (str | pathlib.Path),
         fta_sheet_name: (str | None) = None,
     ):
         self.fta_path = pathlib.Path(fta_path)
         self.states_path = pathlib.Path(states_path)
+        self.osm_cache_folder = pathlib.Path(osm_cache_folder)
         self.sheet_name = fta_sheet_name
 
     def load_data(
@@ -54,7 +56,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
                 return np.nan
             try:
                 print(f"Processing {query_address}")
-                output = geocoder.geocode(query_address)
+                output = ox.geocoder.geocode(query_address)
                 print(f"INFO: Successfully geocoded {query_address}")
                 return output
             except OsmnxExceptions.InsufficientResponseError:
@@ -68,7 +70,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
                 return np.nan, np.nan
             try:
                 # Call OSMNX to find parking spaces
-                output = features_from_point((latitude, longitude), PARKING_QUERY, dist=search_distance)
+                output = ox.features_from_point((latitude, longitude), PARKING_QUERY, dist=search_distance)
             except OsmnxExceptions.InsufficientResponseError:
                 print(f"WARN: ({latitude}, {longitude}) could not be assigned to parking")
                 return np.nan, np.nan
@@ -139,6 +141,8 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
             gpd.points_from_xy(df_inventory["Longitude"], df_inventory["Latitude"], crs=GEODESIC_CRS).to_crs(load_area_crs).within(load_area)
         ]
         # Get data about parking from OSM
+        old_cache_path = ox.settings.cache_folder
+        ox.settings.cache_folder = self.osm_cache_folder
         parking_response = pd.Series(
             zip(
                 df_inventory["filled_latitude"],
@@ -155,6 +159,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
                 keep_columns=["parking"]
             )
         ).dropna()
+        ox.settings.cache_folder = old_cache_path
         # Convert the result into a dataframe with one entry per OSM parking response
         df_inventory["parking_geometry"] = parking_response.map(lambda x: x[0])
         df_inventory["parking_type"] = parking_response.map(
