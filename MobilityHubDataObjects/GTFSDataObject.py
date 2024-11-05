@@ -78,7 +78,7 @@ class GTFSDataObject(SpatialDataObject):
         if self.gtfs_override_feeds_path is not None:
             df_override_feeds = pd.read_csv(self.gtfs_override_feeds_path, index_col=0)
         else:
-            df_override_feeds = pd.DataFrame
+            df_override_feeds = pd.DataFrame(index=[])
         feeds_columns = [
                 "name",
                 "agency_url",
