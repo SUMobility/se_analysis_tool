@@ -31,8 +31,13 @@ class GTFSDataObject(SpatialDataObject):
         time_end: dt.time,
         min_headway: int, 
         api_key_path: str,
+        gtfs_override_feeds_path: None | str | pathlib.Path = None,
     ) -> None:
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
+        if gtfs_override_feeds_path is not None:
+            self.gtfs_override_feeds_path = pathlib.Path(gtfs_override_feeds_path).resolve()
+        else:
+            self.gtfs_override_feeds_path = None
         self.transitland_url = transitland_url
         self.time_start = time_start
         self.time_end = time_end
@@ -70,9 +75,13 @@ class GTFSDataObject(SpatialDataObject):
             MAX_CALLS
         )
         df_feeds_metadata = pd.DataFrame
+        if self.gtfs_override_feeds_path is not None:
+            df_override_feeds = pd.read_csv(self.gtfs_override_feeds_path, index_col=0)
+        else:
+            df_override_feeds = pd.DataFrame(index=[])
         feeds_columns = [
                 "name",
-                "agency_url"
+                "agency_url",
                 "url",
                 "raw_feed_path",
                 "processed_file_path",
@@ -128,23 +137,26 @@ class GTFSDataObject(SpatialDataObject):
                 feed_url = current_feed_version["url"]
                 feed_output_path = self.gtfs_cache_path / f"GTFS_{feed['onestop_id']}.zip"
 
-                # Download the feed
-                try:
-                    sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
-                except requests.HTTPError as e:
-                    sha1_hash = None
-                if sha1_hash is None:
-                    print("INFO: Requests download failed. Will try Playwright")
-                    sha1_hash = await download_file_with_playwright(feed_url, 
-                        feed_output_path, feed_id, MAX_CHUNK_SIZE)
-                if sha1_hash is None:
-                    print(f"WARN: Download for {feed_id} failed even with Playwright")
-                    df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                    continue
-                if sha1_hash is not None and sha1_hash.hexdigest() != current_feed_version["sha1"]:
-                    print(
-                        f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match the provided hash from Transitland {current_feed_version['sha1']}"
-                    )
+                if feed_id in df_override_feeds.index:
+                    feed_output_path = self.gtfs_cache_path / df_override_feeds.loc[feed_id, "path"]
+                else:
+                    # Download the feed
+                    try:
+                        sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
+                    except requests.HTTPError as e:
+                        sha1_hash = None
+                    if sha1_hash is None:
+                        print("INFO: Requests download failed. Will try Playwright")
+                        sha1_hash = await download_file_with_playwright(feed_url, 
+                            feed_output_path, feed_id, MAX_CHUNK_SIZE)
+                    if sha1_hash is None:
+                        print(f"WARN: Download for {feed_id} failed even with Playwright")
+                        df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
+                        continue
+                    if sha1_hash is not None and sha1_hash.hexdigest() != current_feed_version["sha1"]:
+                        print(
+                            f"WARN: For {feed['onestop_id']}, the hash {sha1_hash.hexdigest()} does not match the provided hash from Transitland {current_feed_version['sha1']}"
+                        )
                 feed_last_fetched = dt.datetime.now(tz=dt.timezone.utc)
                 #feed_end_of_life_dt = dt.datetime.fromisoformat(df_current_feed_version["latest_calendar_date"])
                 feed_attribution_url = get_str_or_na(feed["license"]["url"])
@@ -249,15 +261,16 @@ class GTFSDataObject(SpatialDataObject):
     def get_folium_plot(self) -> folium.GeoJson:
         assert self.data_loaded
         intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
-        intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
+        """intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
         fields, aliases = filter_two_corresponding_arrays(
             self.gdf.columns,
             intended_fields,
             intended_aliases,
-        )
+        )"""
+        print("GTFS FIELDS", intended_fields)
         gtfs_popup = folium.GeoJsonPopup(
-            fields=fields,
-            alias=aliases,
+            fields=intended_fields,
+            #alias=aliases,
         )
         max_sqrt_score = np.percentile(np.sqrt(self.gdf["score"]), 98)
         gtfs_geojson = folium.GeoJson(

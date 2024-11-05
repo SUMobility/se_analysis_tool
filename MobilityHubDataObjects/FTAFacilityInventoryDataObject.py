@@ -49,6 +49,9 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         load_area: (shapely.MultiPolygon | shapely.Polygon),
         load_area_crs: int
     ) -> None:
+        # Set OSMNX cache
+        old_cache_path = ox.settings.cache_folder
+        ox.settings.cache_folder = self.osm_cache_folder
         # Helper functions
         def safe_geocode(query_address: str) -> gpd.GeoDataFrame:
             # Get nearby parking locations from the address in query_address using OSM. Return na if query_address is na
@@ -140,8 +143,6 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
             gpd.points_from_xy(df_inventory["Longitude"], df_inventory["Latitude"], crs=GEODESIC_CRS).to_crs(load_area_crs).within(load_area)
         ]
         # Get data about parking from OSM
-        old_cache_path = ox.settings.cache_folder
-        ox.settings.cache_folder = self.osm_cache_folder
         parking_response = pd.Series(
             zip(
                 df_inventory["filled_latitude"],
@@ -158,7 +159,6 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
                 keep_columns=["parking"]
             )
         ).dropna()
-        ox.settings.cache_folder = old_cache_path
         # Convert the result into a dataframe with one entry per OSM parking response
         df_inventory["parking_geometry"] = parking_response.map(lambda x: x[0])
         df_inventory["parking_type"] = parking_response.map(
@@ -212,6 +212,9 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         gdf_inventory_combined = pd.concat([gdf_inventory_geodesic, gdf_spaces_points])
         # Save the responses that are within the load_area TODO: add an area filter earlier up to avoid geocoding unnecessary places
         self.gdf = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
+        # Reset OSMNX cache settings to default
+        ox.settings.cache_folder = old_cache_path
+
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(get_score_constant_value(5), [])
