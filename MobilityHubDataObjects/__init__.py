@@ -9,6 +9,7 @@ from .GTFSFeedWrapper import *
 from .CityBikesDataObject import *
 from .scoreFunctions import *
 from .ScoreWrapper import *
+from .BaseLayer import *
 
 __all__ = [
     "AFDCApiDataObject",
@@ -19,6 +20,13 @@ __all__ = [
     "GTFSDataObject",
     "OSMDataObject",
     "CityBikesDataObject",
-    "ScoreWrapper"
+    "ScoreWrapper",
+    "BaseLayer",
+    "BaseLayerEjscreen",
+    "BaseLayerSmartLocation",
+    "CensusCarlessness",
+    "CensusModeshare",
+    "CensusPopulation",
+    "ColorMaps"
 ]
 #%%
