@@ -9,7 +9,7 @@ import requests
 import shapely
 from MobilityHubDataObjects import SpatialDataObject, constants
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
-from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, transform_shapely_geometry
+from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, filter_two_corresponding_arrays, transform_shapely_geometry
 
 COUNTRY_CODE_US = "US"
 
@@ -68,6 +68,7 @@ class CityBikesDataObject(SpatialDataObject):
         ].rename(
             columns={"name": "system_name"}
         )
+        self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(lambda x: (2 if x else 0) + 5, ["has_ebikes"])
@@ -76,9 +77,12 @@ class CityBikesDataObject(SpatialDataObject):
         return get_linear_decay_function(500) 
 
     def get_folium_plot(self) -> GeoJson:
+        intended_fields = ["system_name", "system", "station_name", 'capacity', "has_ebikes"]
+        intended_aliases = ["System Name", "Operator", "Station Name", "Capacity", "Has Ebikes?"]
+        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, intended_fields, intended_aliases)
         citybikes_popup = folium.GeoJsonPopup(
-            fields=["system_name", "system", "station_name", 'capacity', "has_ebikes"],
-            aliases=["System Name", "Operator","Station Name", "Capacity", "Has Ebikes?"]
+            fields=fields,
+            aliases=aliases
         )
         return folium.GeoJson(
             self.gdf,

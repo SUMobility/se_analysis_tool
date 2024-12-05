@@ -9,6 +9,7 @@ import datetime as dt
 import pandas as pd
 import geopandas as gpd
 import pathlib
+from urllib.parse import urlparse
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
@@ -20,7 +21,6 @@ class GTFSDataObject(SpatialDataObject):
     df_feeds_metadata = None
     load_area = None
     gdf = gpd.GeoDataFrame()
-    data_loaded = False
 
     def __init__(
         self,
@@ -123,6 +123,7 @@ class GTFSDataObject(SpatialDataObject):
                 df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                 continue 
             download_new_file = True
+
             if feed_id in df_feeds_metadata.index and df_feeds_metadata.at[feed_id, "last_fetch_succeeded"]:
                 # The current feed is already in the cache, so we may not need to download a new file
                 cached_feed_metadata = df_feeds_metadata.loc[feed_id]
@@ -143,8 +144,11 @@ class GTFSDataObject(SpatialDataObject):
                     # Download the feed
                     try:
                         sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
-                    except requests.HTTPError as e:
+                    except requests.HTTPError:
                         sha1_hash = None
+                    except requests.exceptions.MissingSchema:
+                        print(f"WARN: URL {feed_url} is invalid. Skipping")
+                        continue
                     if sha1_hash is None:
                         print("INFO: Requests download failed. Will try Playwright")
                         sha1_hash = await download_file_with_playwright(feed_url, 
@@ -225,7 +229,6 @@ class GTFSDataObject(SpatialDataObject):
                     processed_agency_ids.append(feed_id)        
         # Merge newly downloaded and cached stops
         print(f"PRINTING ALL PROCESSED AGENCY IDS: {", ".join(processed_agency_ids)}")
-        
         if len(frequent_stops_gdf_list) > 0:
             gdf_downloaded_frequent_stops = pd.concat(frequent_stops_gdf_list)
             print(f"AGENCIES: {gdf_downloaded_frequent_stops["agency_id"].unique()}")
@@ -250,7 +253,7 @@ class GTFSDataObject(SpatialDataObject):
         self.df_feeds_metadata = df_feeds_metadata
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
-        self.data_loaded = True
+        self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(score_transit_stops, "headway_string")
@@ -259,7 +262,6 @@ class GTFSDataObject(SpatialDataObject):
         return get_linear_decay_function(500)
 
     def get_folium_plot(self) -> folium.GeoJson:
-        assert self.data_loaded
         intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
         """intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
         fields, aliases = filter_two_corresponding_arrays(
@@ -283,7 +285,6 @@ class GTFSDataObject(SpatialDataObject):
             }
         )
         return gtfs_geojson
-    
 
     def _recursively_make_transitland_call(self, max_responses, initial_load_area_bounds, max_calls):
         # Call transitland recursively with a smaller bounding box until it doesn't give an error

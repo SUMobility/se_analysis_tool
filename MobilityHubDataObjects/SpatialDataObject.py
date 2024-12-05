@@ -9,7 +9,7 @@ from typing import Callable
 
 
 class SpatialDataObject(ABC):
-    is_loaded = False
+    _loaded = False
     gdf = gpd.GeoDataFrame
 
     @abstractmethod
@@ -51,3 +51,8 @@ class SpatialDataObject(ABC):
             raise TypeError("Score fields is not a list or string")
         else:
             raise KeyError("Not all elements of score_fields are valid columns")
+        
+    def get_is_loaded(self):
+        return self._loaded
+    def _set_is_loaded(self):
+        self._loaded = True
