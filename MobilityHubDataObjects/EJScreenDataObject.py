@@ -27,6 +27,7 @@ class EJScreenDataObject(SpatialDataObject):
             mask=transform_shapely_geometry(load_area_crs, 4269, load_area)
         )[["PTRAF", "P_PTRAF", "geometry"]]
         self.gdf = gdf_ejscreen.loc[gdf_ejscreen.within(transform_shapely_geometry(load_area_crs, 4269, load_area))]
+        self._set_is_loaded()
 
     def get_scores(self) -> Series:
         return self._get_scores_from_function(get_proportional_score(100), "P_PTRAF")

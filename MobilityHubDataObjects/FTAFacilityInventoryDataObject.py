@@ -214,6 +214,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         self.gdf = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
         # Reset OSMNX cache settings to default
         ox.settings.cache_folder = old_cache_path
+        self._set_is_loaded()
 
 
     def get_scores(self) -> pd.Series:

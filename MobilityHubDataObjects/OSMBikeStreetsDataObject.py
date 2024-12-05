@@ -7,6 +7,7 @@ import osmnx as ox
 import pandas as pd
 import geopandas as gpd
 from shapely import MultiPolygon, Polygon
+import shapely
 from MobilityHubDataObjects import SpatialDataObject
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.utils import transform_shapely_geometry
@@ -33,31 +34,59 @@ BIKE_LANE_COLORS = {
     "paint_only": "#1cff03",
     "not_paint_only": "#21c90e"
 }
+DEFAULT_REFERENCE_DISTANCE = 4829 # 3 miles
 
 class OSMBikeStreetsDataObject(SpatialDataObject):
-    def __init__(self, cache_path: (str | pathlib.Path)):
+    def __init__(
+            self,
+            cache_path: (str | pathlib.Path),
+            max_distance_from_reference: int | None = DEFAULT_REFERENCE_DISTANCE,
+            reference: SpatialDataObject | None = None,
+            local_crs: int | None = int
+        ):
         self.cache_path = cache_path
+        self.max_distance_from_reference = max_distance_from_reference
+        self.reference = reference
+        self.local_crs = local_crs
+        if reference is not None and (max_distance_from_reference is None or local_crs is None):
+            raise RuntimeError("Reference provided but CRS and/or max_distance_from_reference not provided. All three parameters must be provided together if reference is provided")
     
     def load_data(self, load_area: MultiPolygon | Polygon, load_area_crs: int) -> None:
+        if self.reference is not None:
+            assert self.reference.get_is_loaded()
         old_cache_path = ox.settings.cache_folder
         ox.settings.cache_folder = self.cache_path
-        gdf_osm_result = ox.features_from_polygon(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area), bike_lane_tags)
+        if self.reference is not None:
+            reference_geom = self.reference.gdf.geometry.to_crs(self.local_crs).buffer(self.max_distance_from_reference).unary_union
+            load_area_geom = transform_shapely_geometry(
+                self.local_crs,
+                GEODESIC_CRS,
+                shapely.intersection(
+                    transform_shapely_geometry(load_area_crs, self.local_crs, load_area),
+                    reference_geom
+                )
+            )
+        else:
+            load_area_geom = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
+        gdf_osm_result = ox.features_from_polygon(
+            load_area_geom,
+            bike_lane_tags
+        )
         gdf_osm_result["geometry"] = gdf_osm_result.geometry
         osm_crs = gdf_osm_result.crs
         for tag in bike_lane_tags.keys():
             if tag not in gdf_osm_result:
                 gdf_osm_result[tag] = np.nan
-        #TODO: handle cycleway:left, cycleway:right, other edge cases
         df_osm_processed_separated = pd.concat([
             gdf_osm_result.loc[ # Paths that usually include bikes and are not excluded
                 gdf_osm_result["highway"].isin(path_bike_allowed_usually) 
                 & ~gdf_osm_result["bicycle"].isin(bike_exclude)
             ],
-            gdf_osm_result.loc[ # Paths that do not usually inculde bikes, but where bikes are included
+            gdf_osm_result.loc[ # Paths that do not usually include bikes, but where bikes are included
                 gdf_osm_result["highway"].isin(path_bike_not_allowed_usually)
                 & gdf_osm_result["bicycle"].isin(bike_include)
             ],
-            *[gdf_osm_result.loc[
+            *[gdf_osm_result.loc[ # Protected bike lanes (includes flexposts)
                 gdf_osm_result[cycleway_type].isin(protected_bike_lane_types)
             ] for cycleway_type in cycleway_tag_types],
             gdf_osm_result.loc[gdf_osm_result["ramp: bicycle"] == "yes"]
@@ -67,7 +96,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
         ]
         df_osm_processed_separated["paint_only"] = False
         df_osm_processed_not_separated = pd.concat([
-            gdf_osm_result.loc[
+            gdf_osm_result.loc[ # Paint-only bike lanes
                 gdf_osm_result[cycleway_type].isin(paint_bike_lane_types)
             ] for cycleway_type in cycleway_tag_types
         ])
@@ -80,6 +109,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
         ]
         self.gdf = gpd.GeoDataFrame(gdf_osm_processed.reset_index(), geometry="geometry", crs=osm_crs)
         ox.settings.cache_folder = old_cache_path
+        self._set_is_loaded()
     
     def get_folium_plot(self) -> GeoJson:
         fields = ["cycleway", "highway", "paint_only"]

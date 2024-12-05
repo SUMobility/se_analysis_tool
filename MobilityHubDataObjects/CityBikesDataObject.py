@@ -68,6 +68,7 @@ class CityBikesDataObject(SpatialDataObject):
         ].rename(
             columns={"name": "system_name"}
         )
+        self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(lambda x: (2 if x else 0) + 5, ["has_ebikes"])

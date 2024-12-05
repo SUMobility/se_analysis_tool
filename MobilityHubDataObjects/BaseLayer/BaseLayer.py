@@ -94,7 +94,8 @@ class BaseLayer(SpatialDataObject):
             gdf_tiger[metric_series.name] = metric_series
             metric_names.append(metric_series.name)
         self.metric_names = list(metric_names)
-        self.gdf = gdf_tiger.copy()
+        self.gdf = gdf_tiger
+        self._set_is_loaded()
 
     def get_folium_plot(self):
         geoid_name = "Block Group GeoID"

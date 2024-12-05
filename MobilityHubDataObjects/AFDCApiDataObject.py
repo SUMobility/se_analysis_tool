@@ -72,6 +72,7 @@ class AFDCApiDataObject(SpatialDataObject):
             load_area_max_distance * METERS_TO_MILES_FACTOR,
         )
         self.gdf = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)].copy()
+        self._set_is_loaded
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(get_score_constant_value(5), [])

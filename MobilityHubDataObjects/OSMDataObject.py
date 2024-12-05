@@ -33,6 +33,7 @@ class OSMDataObject(SpatialDataObject):
             lambda geom: small_geodesic_polygons_to_points(geom, self.max_point_size)
         )
         self.gdf = gdf_osm_result
+        self._set_is_loaded()
 
     def get_score_decay_function(self) -> Callable[[float], float]:
         return get_linear_decay_function(500)
