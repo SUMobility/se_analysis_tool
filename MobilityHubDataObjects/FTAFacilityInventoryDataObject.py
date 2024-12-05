@@ -23,12 +23,13 @@ OSM_SURFACE_PARKING_TYPES = ["surface", "carports"]
 FTA_SURFACE_PARKING = "Surface Parking Lot"
 FTA_PARKING_STRUCTURE = "Parking Structure"
 PARKING_QUERY = {"amenity": ["parking"]}
-PARKING_FILTER = { # TODO: delete me
+PARKING_FILTER = { 
     "Facility Type": [
         "Parking Structure",
         "Surface Parking Lot"
     ],
 }
+NTD_FIELDS = ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
 
 class FTAFacilityInventoryDataObject(SpatialDataObject):
     gdf = gpd.GeoDataFrame
@@ -211,7 +212,8 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         )
         gdf_inventory_combined = pd.concat([gdf_inventory_geodesic, gdf_spaces_points])
         # Save the responses that are within the load_area TODO: add an area filter earlier up to avoid geocoding unnecessary places
-        self.gdf = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
+        gdf_inventory_combined = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
+        self.gdf = gpd.GeoDataFrame(gdf_inventory_combined[NTD_FIELDS], geometry=gdf_inventory_combined.geometry)
         # Reset OSMNX cache settings to default
         ox.settings.cache_folder = old_cache_path
         self._set_is_loaded()
@@ -224,16 +226,15 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         return get_linear_decay_function(250)
 
     def get_folium_plot(self) -> folium.GeoJson:
-        fields_to_display = ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
         fta_popup = folium.GeoJsonPopup(
             fields=list(np.intersect1d(
-                fields_to_display,
+                NTD_FIELDS,
                 self.gdf.columns
             ))
         )
         light_blue_color = "#12aae6"
         fta_geojson = folium.GeoJson(
-            self.gdf[fields_to_display + ["geometry"]],
+            self.gdf,
             marker=basic_circle_marker(light_blue_color),
             style_function = lambda _: {"radius": 3, "fillcolor": light_blue_color},
             popup=fta_popup

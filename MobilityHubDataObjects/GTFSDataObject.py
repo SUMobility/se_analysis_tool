@@ -17,6 +17,9 @@ from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, scor
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
+BIKE_FIELDS = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
+BIKE_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
+
 class GTFSDataObject(SpatialDataObject):
     df_feeds_metadata = None
     load_area = None
@@ -262,17 +265,9 @@ class GTFSDataObject(SpatialDataObject):
         return get_linear_decay_function(500)
 
     def get_folium_plot(self) -> folium.GeoJson:
-        intended_fields = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
-        """intended_aliases = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway by route", "Score"]
-        fields, aliases = filter_two_corresponding_arrays(
-            self.gdf.columns,
-            intended_fields,
-            intended_aliases,
-        )"""
-        print("GTFS FIELDS", intended_fields)
         gtfs_popup = folium.GeoJsonPopup(
-            fields=intended_fields,
-            #alias=aliases,
+            fields=BIKE_FIELDS,
+            aliases=BIKE_ALIASES,
         )
         max_sqrt_score = np.percentile(np.sqrt(self.gdf["score"]), 98)
         gtfs_geojson = folium.GeoJson(
