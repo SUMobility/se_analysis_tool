@@ -9,6 +9,7 @@ import datetime as dt
 import pandas as pd
 import geopandas as gpd
 import pathlib
+from urllib.parse import urlparse
 
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
@@ -123,6 +124,7 @@ class GTFSDataObject(SpatialDataObject):
                 df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                 continue 
             download_new_file = True
+
             if feed_id in df_feeds_metadata.index and df_feeds_metadata.at[feed_id, "last_fetch_succeeded"]:
                 # The current feed is already in the cache, so we may not need to download a new file
                 cached_feed_metadata = df_feeds_metadata.loc[feed_id]
@@ -143,8 +145,11 @@ class GTFSDataObject(SpatialDataObject):
                     # Download the feed
                     try:
                         sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
-                    except requests.HTTPError as e:
+                    except requests.HTTPError:
                         sha1_hash = None
+                    except requests.exceptions.MissingSchema:
+                        print(f"WARN: URL {feed_url} is invalid. Skipping")
+                        continue
                     if sha1_hash is None:
                         print("INFO: Requests download failed. Will try Playwright")
                         sha1_hash = await download_file_with_playwright(feed_url, 
