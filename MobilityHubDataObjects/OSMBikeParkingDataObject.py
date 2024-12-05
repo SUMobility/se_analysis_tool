@@ -13,7 +13,10 @@ from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresp
 
 from .SpatialDataObject import SpatialDataObject
 
-class OSMDataObject(SpatialDataObject):
+BIKE_PARKING_FIELDS = ["bicycle_parking", "capacity", "covered"]
+BIKE_PARKING_ALIASES = ["Facility Type", "Capacity", "Covered?"]
+
+class OSMBikeParkingDataObject(SpatialDataObject):
     gdf = gpd.GeoDataFrame
     def __init__(self, cache_path: (str | pathlib.Path), tags, max_point_size: int = 100): # TODO: not sure of type for tags so using any
         self.cache_path = cache_path
@@ -32,7 +35,7 @@ class OSMDataObject(SpatialDataObject):
         gdf_osm_result.geometry = gdf_osm_result.geometry.map(
             lambda geom: small_geodesic_polygons_to_points(geom, self.max_point_size)
         )
-        self.gdf = gdf_osm_result
+        self.gdf = gpd.GeoDataFrame(gdf_osm_result[BIKE_PARKING_FIELDS], geometry=gdf_osm_result.geometry)
         self._set_is_loaded()
 
     def get_score_decay_function(self) -> Callable[[float], float]:
@@ -42,8 +45,8 @@ class OSMDataObject(SpatialDataObject):
         return self._get_scores_from_function(get_score_constant_value(5), [])
 
     def get_folium_plot(self):
-        intended_fields = ["bicycle_parking", "capacity", "covered"]
-        intended_aliases = ["Facility Type", "Capacity", "Covered?"]
+        intended_fields = BIKE_PARKING_FIELDS
+        intended_aliases = BIKE_PARKING_ALIASES
         fields, aliases = filter_two_corresponding_arrays(
             self.gdf.columns,
             intended_fields,
@@ -58,7 +61,7 @@ class OSMDataObject(SpatialDataObject):
             labels=True,
         )
         osm_geojson = folium.GeoJson(
-            self.gdf[["bicycle_parking", "capacity", "covered", "geometry"]],
+            self.gdf,
             marker=basic_circle_marker("red"),
             style_function=lambda _: {
                 "fillColor": "red",

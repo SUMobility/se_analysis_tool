@@ -4,6 +4,8 @@ rawData/*
 !rawData/.gitkeep
 cache/gtfs_cache/*
 cache/osmnx_cache/*
+cache/tiger_cache/*
 !cache/gtfs_cache/.gitkeep
 !cache/osmnx_cache/.gitkeep
+!cache/tiger_cache/.gitkeep
 gtfs/

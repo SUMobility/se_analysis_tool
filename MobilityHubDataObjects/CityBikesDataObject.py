@@ -1,17 +1,18 @@
-from io import StringIO
 from typing import Callable
 import folium
 from folium.features import GeoJson
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-import requests
 import shapely
 from MobilityHubDataObjects import SpatialDataObject, constants
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, filter_two_corresponding_arrays, transform_shapely_geometry
 
 COUNTRY_CODE_US = "US"
+
+CITYBIKES_FIELDS = ["system_name", "system", "station_name", 'capacity', "has_ebikes"]
+CITYBIKES_ALIASES = ["System Name", "Operator", "Station Name", "Capacity", "Has Ebikes?"]
 
 class CityBikesDataObject(SpatialDataObject):
     def __init__(self, citybikes_url: str) -> None:
@@ -62,12 +63,12 @@ class CityBikesDataObject(SpatialDataObject):
             geometry=gpd.points_from_xy(df_citybikes_stations["longitude"], df_citybikes_stations["latitude"]),
             crs=constants.GEODESIC_CRS
         )
-        self.gdf = gdf_citybikes_stations.loc[
-            gdf_citybikes_stations.within(load_area_transformed),
-            ["id", "name", "system", "station_name", "capacity", "has_ebikes", "geometry"]
-        ].rename(
-            columns={"name": "system_name"}
-        )
+        gdf_citybikes_stations_to_save = gdf_citybikes_stations.rename(columns={"name": "system_name"}).loc[
+            gdf_citybikes_stations.within(load_area_transformed)
+        ]
+        self.gdf = gpd.GeoDataFrame(
+            gdf_citybikes_stations_to_save[CITYBIKES_FIELDS],
+            geometry=gdf_citybikes_stations_to_save.geometry)
         self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
@@ -77,9 +78,7 @@ class CityBikesDataObject(SpatialDataObject):
         return get_linear_decay_function(500) 
 
     def get_folium_plot(self) -> GeoJson:
-        intended_fields = ["system_name", "system", "station_name", 'capacity', "has_ebikes"]
-        intended_aliases = ["System Name", "Operator", "Station Name", "Capacity", "Has Ebikes?"]
-        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, intended_fields, intended_aliases)
+        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, CITYBIKES_FIELDS, CITYBIKES_ALIASES)
         citybikes_popup = folium.GeoJsonPopup(
             fields=fields,
             aliases=aliases

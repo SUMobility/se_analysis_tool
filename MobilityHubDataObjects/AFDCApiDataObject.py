@@ -13,6 +13,8 @@ import folium
 
 from .constants import METERS_TO_MILES_FACTOR
 
+AFDC_FIELDS = ["station_name", "street_address", "ev_network", "ev_network_web"]
+AFDC_ALIASES = ["Name", "Address", "Network", "Website"]
 
 class AFDCApiDataObject(SpatialDataObject):
     gdf = gpd.GeoDataFrame
@@ -30,9 +32,7 @@ class AFDCApiDataObject(SpatialDataObject):
         return gpd.read_file(url)
 
     def get_folium_plot(self) -> folium.GeoJson:
-        intended_fields = ["station_name", "street_address", "ev_network", "ev_network_web"]
-        intended_aliases = ["Name", "Address", "Network", "Website"]
-        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, intended_fields, intended_aliases)
+        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, AFDC_FIELDS, AFDC_ALIASES)
         afdc_popup = folium.GeoJsonPopup(
             fields=fields,
             aliases=aliases,
@@ -71,7 +71,11 @@ class AFDCApiDataObject(SpatialDataObject):
             load_area_centroid_lat_lon.x,
             load_area_max_distance * METERS_TO_MILES_FACTOR,
         )
-        self.gdf = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)].copy()
+        gdf_afdc_response_to_save = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)]
+        self.gdf = gpd.GeoDataFrame(
+            gdf_afdc_response_to_save[AFDC_FIELDS],
+            geometry=gdf_afdc_response_to_save.geometry
+        )
         self._set_is_loaded
 
     def get_scores(self) -> pd.Series:
