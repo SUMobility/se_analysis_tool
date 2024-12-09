@@ -1,0 +1,7 @@
+from MobilityHubDataObjects.BaseLayer.constants import SMART_LOCATION_POPULATION_DENSITY_COLUMN, SMART_LOCATION_POPULATION_DENSITY_NAME
+from MobilityHubDataObjects.BaseLayer.entities import BaseLayerSmartLocation
+
+
+class SmartLocationPopulationDensity(BaseLayerSmartLocation):
+    metric_field_id = SMART_LOCATION_POPULATION_DENSITY_COLUMN
+    metric_alias = SMART_LOCATION_POPULATION_DENSITY_NAME

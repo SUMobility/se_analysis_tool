@@ -5,6 +5,8 @@ import pandas as pd
 import geopandas as gpd
 from pygris.data import get_census
 
+from MobilityHubDataObjects.BaseLayer import SmartLocationWrapper
+
 from .utils import split_county_fips
 from .constants import GEOID_COLUMN
 
@@ -48,7 +50,7 @@ class BaseLayerCensus(BaseLayerMetric, ABC):
     
     def load_data(self, county_fips: Iterable[str]):
         state_fips, county_fips = split_county_fips(county_fips)
-        state = state_fips.iloc[0]
+        state = state_fips[0]
         data = get_census(
             dataset="2022/acs/acs5",
             variables=list(self.variable_dict.values()),
@@ -65,3 +67,33 @@ class BaseLayerCensus(BaseLayerMetric, ABC):
     @abstractmethod
     def get_data_for_ids(self, ids: pd.Series) -> pd.Series:
         pass
+
+
+class BaseLayerSmartLocation(BaseLayerMetric, ABC):
+    gdf_block_groups = None
+
+    @property
+    @abstractmethod
+    def metric_field_id(cls) -> str:
+        pass
+
+    @property
+    @abstractmethod
+    def metric_alias(cls) -> str:
+        pass
+
+    def __init__(self, smartLocationWrapper: SmartLocationWrapper) -> None:
+        self.smartlocation_wrapper = smartLocationWrapper
+
+    def load_data(self, county_fips: Iterable[str]):
+        if not self.smartlocation_wrapper.get_is_loaded(county_fips):
+            self.smartlocation_wrapper.load_data(self.gdf_block_groups, county_fips)
+        self._set_is_loaded()
+        
+    def get_data_for_ids(self, ids):
+        return self.smartlocation_wrapper.gdf.loc[ids, self.metric_field_id].rename(self.metric_alias, copy=True)
+    
+    def should_send_block_group_gdf(self) -> bool:
+        return True
+    def send_block_group_gdf(self, gdf: gpd.GeoDataFrame) -> None:
+        self.gdf_block_groups = gdf

@@ -22,7 +22,7 @@ __all__ = [
     "ScoreWrapper",
     "BaseLayer",
     "BaseLayerEjscreen",
-    "BaseLayerSmartLocation",
+    "SmartLocationWrapper",
     "CensusCarlessness",
     "CensusModeshare",
     "CensusPopulation",
