@@ -36,7 +36,7 @@ BIKE_COLORS = {
     "paint_only": "#1cff03",
     "not_paint_only": "#21c90e"
 }
-DEFAULT_REFERENCE_DISTANCE = 4829 # 3 miles
+DEFAULT_REFERENCE_DISTANCE = 4829 # 3 miles in meters
 
 class OSMBikeStreetsDataObject(SpatialDataObject):
     def __init__(
@@ -72,7 +72,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
             load_area_geom = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
         gdf_osm_result = ox.features_from_polygon(
             load_area_geom,
-            BIKE_SEARCH_TAGS
+            BIKE_SEARCH_TAGS,
         )
         gdf_osm_result["geometry"] = gdf_osm_result.geometry
         osm_crs = gdf_osm_result.crs

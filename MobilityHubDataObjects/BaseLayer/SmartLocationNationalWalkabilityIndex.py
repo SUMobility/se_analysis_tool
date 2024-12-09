@@ -1,0 +1,7 @@
+from MobilityHubDataObjects.BaseLayer.constants import SMART_LOCATION_JOB_ACCESSIBILITY_COLUMN, SMART_LOCATION_JOB_ACCESSIBILITY_NAME, SMART_LOCATION_NATIONAL_WALKABILITY_INDEX_COLUMN, SMART_LOCATION_NATIONAL_WALKABILITY_INDEX_NAME
+from MobilityHubDataObjects.BaseLayer.entities import BaseLayerSmartLocation
+
+
+class SmartLocationNationalWalkabilityIndex(BaseLayerSmartLocation):
+    metric_field_id = SMART_LOCATION_NATIONAL_WALKABILITY_INDEX_COLUMN
+    metric_alias = SMART_LOCATION_NATIONAL_WALKABILITY_INDEX_NAME

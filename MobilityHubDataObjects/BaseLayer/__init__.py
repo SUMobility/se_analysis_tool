@@ -1,17 +1,25 @@
 from .BaseLayer import *
 from .BaseLayerEjscreen import *
-from .BaseLayerSmartLocation import *
+from .SmartLocationWrapper import *
 from .CensusCarlessness import *
 from .CensusModeshare import *
 from .CensusPopulation import *
 from .ColorMaps import ColorMaps
+from .SmartLocationJobDensity import *
+from .SmartLocationJobAccessibility import *
+from .SmartLocationNationalWalkabilityIndex import *
+from .SmartLocationWrapper import *
 
 __all__ = [
     "BaseLayer",
     "BaseLayerEjscreen",
-    "BaseLayerSmartLocation",
+    "SmartLocationWrapper",
     "CensusCarlessness",
     "CensusModeshare",
     "CensusPopulation",
-    "ColorMaps"
+    "ColorMaps",
+    "SmartLocationJobDensity",
+    "SmartLocationJobAccessibility",
+    "SmartLocationNationalWalkabilityIndex",
+    "SmartLocationWrapper",
 ]
