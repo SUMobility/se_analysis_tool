@@ -11,45 +11,17 @@ import shapely
 
 from MobilityHubDataObjects import SpatialDataObject
 from .ColorMaps import ColorMaps
-from .constants import ACS_YEAR, BUFFER_SIZE, EJSCREEN_NAME, GEOID_COLUMN, TIGER_CRS
+from .constants import ACS_YEAR, BUFFER_SIZE, EJSCREEN_NAME, GEOID_COLUMN, GEOID_NAME, TIGER_CRS
 from .entities import BaseLayerMetric
 from MobilityHubDataObjects.utils import transform_shapely_geometry
 
-# Basic colormap that only uses ejscreen functions
-def _basic_ejscreen_color_map(df: pd.DataFrame) -> pd.Series:
-    color_map = {
-            0: "green",
-            1: "green",
-            2: "green",
-            3: "green",
-            4: "green",
-            5: "green",
-            6: "yellow",
-            7: "yellow",
-            9: "yellow",
-            8: "red",
-            9: "purple",
-            10: "purple"
-        }
-    p_ptraf_to_color_map = lambda p_ptraf_value: (
-        "black" if (
-            type(p_ptraf_value) is float and np.isnan(p_ptraf_value)
-        ) else color_map[math.floor(p_ptraf_value * 0.1)]
-    )
-    return df[EJSCREEN_NAME].map(p_ptraf_to_color_map)
-
-_COLOR_MAP_FUNCTIONS = {
-    ColorMaps.EJSCREEN_ONLY_COLOR_MAP_ID: _basic_ejscreen_color_map
-}
-
-
 class BaseLayer(SpatialDataObject):
-    def __init__(self, metrics: Iterable[BaseLayerMetric], counties_path: str | pathlib.Path, local_crs: int, color_map):
+    def __init__(self, metrics: Iterable[BaseLayerMetric], counties_path: str | pathlib.Path, local_crs: int, color_map: ColorMaps):
         self.metrics = metrics
         self.counties_path = pathlib.Path(counties_path).resolve()
         self.local_crs = local_crs
         # Get the color map function
-        self.color_map_function = _COLOR_MAP_FUNCTIONS[color_map]
+        self.color_map_function = color_map.value
 
     def load_data(
         self,
@@ -89,8 +61,9 @@ class BaseLayer(SpatialDataObject):
             if metric.should_send_block_group_gdf():
                 metric.send_block_group_gdf(gdf_tiger)
             if not metric.get_is_loaded():
-                metric.load_data(gdf_counties[GEOID_COLUMN])
+                metric.load_data(gdf_counties[GEOID_COLUMN].values)
             metric_series = metric.get_data_for_ids(gdf_tiger.index)
+            print(f"Loaded {metric_series.name}")
             gdf_tiger[metric_series.name] = metric_series
             metric_names.append(metric_series.name)
         self.metric_names = list(metric_names)
@@ -98,16 +71,18 @@ class BaseLayer(SpatialDataObject):
         self._set_is_loaded()
 
     def get_folium_plot(self):
-        geoid_name = "Block Group GeoID"
-        df_to_render = self.gdf.copy()
-        df_to_render["color"] = self.color_map_function(
-            df_to_render[self.metric_names]
+        gdf_to_render = gpd.GeoDataFrame(
+            self.gdf[self.metric_names],
+            geometry=self.gdf.geometry
+        )
+        gdf_to_render["color"] = self.color_map_function(
+            gdf_to_render[self.metric_names]
         )
         popup = folium.GeoJsonPopup(
-            fields=self.metric_names + [geoid_name]
+            fields=self.metric_names + [GEOID_NAME]
         )
         return folium.GeoJson(
-            df_to_render.reset_index(names=geoid_name),
+            gdf_to_render.reset_index(names=GEOID_NAME),
             style_function=lambda x: {
                 "fillColor": x["properties"]["color"],
                 "weight": 0.5,

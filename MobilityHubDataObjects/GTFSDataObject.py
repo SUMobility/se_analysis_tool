@@ -274,10 +274,10 @@ class GTFSDataObject(SpatialDataObject):
             self.gdf.drop("headway_list", axis=1, errors="ignore"),
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
-            style_function = lambda x: {
+            style_function=lambda x: {
                 "radius": max(1.5, np.sqrt(x["properties"]["score"])/max_sqrt_score * 5),
                 "fillColor": MODE_COLOR_MAP[x["properties"]["primary_mode"]]
-            }
+            },
         )
         return gtfs_geojson
 

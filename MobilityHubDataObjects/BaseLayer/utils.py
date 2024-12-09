@@ -3,4 +3,6 @@ import geopandas as gpd
 
 
 def split_county_fips(county_fips: pd.Series) -> tuple[pd.Series]:
-    return county_fips.str.slice(0,2), county_fips.str.slice(2,6)
+    states = [i[0:2] for i in county_fips]
+    counties = [i[2:6] for i in county_fips]
+    return states, counties

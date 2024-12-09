@@ -5,6 +5,7 @@ from .CensusCarlessness import *
 from .CensusModeshare import *
 from .CensusPopulation import *
 from .ColorMaps import ColorMaps
+from .SmartLocationPopulationDensity import *
 from .SmartLocationJobDensity import *
 from .SmartLocationJobAccessibility import *
 from .SmartLocationNationalWalkabilityIndex import *
@@ -18,6 +19,7 @@ __all__ = [
     "CensusModeshare",
     "CensusPopulation",
     "ColorMaps",
+    "SmartLocationPopulationDensity",
     "SmartLocationJobDensity",
     "SmartLocationJobAccessibility",
     "SmartLocationNationalWalkabilityIndex",

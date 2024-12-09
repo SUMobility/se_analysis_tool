@@ -50,7 +50,7 @@ class BaseLayerCensus(BaseLayerMetric, ABC):
     
     def load_data(self, county_fips: Iterable[str]):
         state_fips, county_fips = split_county_fips(county_fips)
-        state = state_fips.iloc[0]
+        state = state_fips[0]
         data = get_census(
             dataset="2022/acs/acs5",
             variables=list(self.variable_dict.values()),
