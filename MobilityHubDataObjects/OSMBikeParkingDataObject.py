@@ -1,6 +1,7 @@
 import pathlib
 from typing import Callable
 import geopandas as gpd
+import numpy as np
 import osmnx as ox
 from pandas.core.api import Series as Series
 import shapely
@@ -35,7 +36,10 @@ class OSMBikeParkingDataObject(SpatialDataObject):
         gdf_osm_result.geometry = gdf_osm_result.geometry.map(
             lambda geom: small_geodesic_polygons_to_points(geom, self.max_point_size)
         )
-        self.gdf = gpd.GeoDataFrame(gdf_osm_result[BIKE_PARKING_FIELDS], geometry=gdf_osm_result.geometry)
+        self.gdf = gpd.GeoDataFrame(
+            gdf_osm_result[np.intersect1d(BIKE_PARKING_FIELDS, gdf_osm_result.columns)],
+            geometry=gdf_osm_result.geometry
+        )
         self._set_is_loaded()
 
     def get_score_decay_function(self) -> Callable[[float], float]:
@@ -45,15 +49,11 @@ class OSMBikeParkingDataObject(SpatialDataObject):
         return self._get_scores_from_function(get_score_constant_value(5), [])
 
     def get_folium_plot(self):
-        intended_fields = BIKE_PARKING_FIELDS
-        intended_aliases = BIKE_PARKING_ALIASES
         fields, aliases = filter_two_corresponding_arrays(
             self.gdf.columns,
-            intended_fields,
-            intended_aliases,
+            BIKE_PARKING_FIELDS,
+            BIKE_PARKING_ALIASES,
         )
-        print("FIELDS", intended_fields)
-        print("ALIASES", intended_aliases)
         osm_popup = folium.GeoJsonPopup(
             fields=fields,
             aliases=aliases,

@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
-from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
+from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, download_latest_feed_version_from_transitland, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
 
 BIKE_FIELDS = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
@@ -35,7 +35,9 @@ class GTFSDataObject(SpatialDataObject):
         min_headway: int, 
         api_key_path: str,
         gtfs_override_feeds_path: None | str | pathlib.Path = None,
+        download_transitland_first: bool = True
     ) -> None:
+        
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
         if gtfs_override_feeds_path is not None:
             self.gtfs_override_feeds_path = pathlib.Path(gtfs_override_feeds_path).resolve()
@@ -49,7 +51,9 @@ class GTFSDataObject(SpatialDataObject):
         self.all_gtfs_paths = None
         self.max_transitland_cache_life = max_transitland_cache_life
         self.transitland_last_queried = None
-        self.api_key_path = api_key_path
+        with open(api_key_path) as f:
+            self.api_key = f.read()
+        self.download_transitland_first = download_transitland_first
 
     async def load_data(
         self,
@@ -152,10 +156,23 @@ class GTFSDataObject(SpatialDataObject):
                     except requests.exceptions.MissingSchema:
                         print(f"WARN: URL {feed_url} is invalid. Skipping")
                         continue
+                    # If download fails and object is configured to download the cached feed from transitland first:
+                    if sha1_hash is None and self.download_transitland_first:
+                        # Download the cached feed from transitland
+                        sha1_hash = download_latest_feed_version_from_transitland(
+                            feed_id, feed_output_path, MAX_CHUNK_SIZE, self.api_key
+                        )
+                    # If download has still failed, try downloading the feed using Playwright
                     if sha1_hash is None:
                         print("INFO: Requests download failed. Will try Playwright")
                         sha1_hash = await download_file_with_playwright(feed_url, 
                             feed_output_path, feed_id, MAX_CHUNK_SIZE)
+                    # If download has still failed, try downloading the feed using Requests
+                    if sha1_hash is None and not self.download_transitland_first:
+                        sha1_hash = download_latest_feed_version_from_transitland(
+                            feed_id, feed_output_path, MAX_CHUNK_SIZE, self.api_key
+                        )
+                    # If the download has still failed, skip this feed
                     if sha1_hash is None:
                         print(f"WARN: Download for {feed_id} failed even with Playwright")
                         df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
@@ -286,10 +303,8 @@ class GTFSDataObject(SpatialDataObject):
         def make_transitland_call(max_responses, load_area_bounds, after = None, max_calls=None):
             if max_calls is not None and max_calls <= 0:
                 raise RecursionError("Max Transitland calls exceeded")
-            with open(self.api_key_path) as f:
-                api_key = f.read()
             stringified_bounds = ",".join(map(lambda x: str(x), load_area_bounds))
-            transitland_url = f"{self.transitland_url}?bbox={stringified_bounds}&limit={max_responses}&license_create_derived_product=exclude_no&license_redistribution_allowed=exclude_no&apikey={api_key}"
+            transitland_url = f"{self.transitland_url}?bbox={stringified_bounds}&limit={max_responses}&license_create_derived_product=exclude_no&license_redistribution_allowed=exclude_no&apikey={self.api_key}"
             if after is not None:
                 transitland_url += f"&after={after}"
             print(f"INFO: Transitland URL: {transitland_url}")
