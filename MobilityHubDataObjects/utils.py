@@ -126,6 +126,12 @@ def download_file_with_requests(url: str, output_path: str | pathlib.Path, max_c
             return None
     return sha1_hash
 
+def download_latest_feed_version_from_transitland(
+        feed_id: str, output_path: str | pathlib.Path, max_chunk_size: int, api_key: str
+    ):
+    url = f"https://transit.land/api/v2/rest/feeds/{feed_id}/download_latest_feed_version?api_key={api_key}"
+    return download_file_with_requests(url, output_path, max_chunk_size)
+
 def get_sha1_hash(f, max_chunk_size, start_bytes=None):
     sha1_hash = hashlib.new("sha1")
     if start_bytes is not None:
