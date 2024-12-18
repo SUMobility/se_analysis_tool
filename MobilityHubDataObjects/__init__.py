@@ -10,6 +10,7 @@ from .scoreFunctions import *
 from .ScoreWrapper import *
 from .BaseLayer import *
 from .OSMBikeStreetsDataObject import *
+from .MobilityHubDataObject import *
 
 __all__ = [
     "AFDCApiDataObject",
@@ -28,5 +29,6 @@ __all__ = [
     "CensusPopulation",
     "ColorMaps",
     "OSMBikeStreetsDataObject",
+    "MobilityHubDataObject"
 ]
 #%%

@@ -48,15 +48,15 @@ class BaseLayerCensus(BaseLayerMetric, ABC):
     def __init__(self):
         self.census_id_column = GEOID_COLUMN
     
-    def load_data(self, county_fips: Iterable[str]):
-        state_fips, county_fips = split_county_fips(county_fips)
-        state = state_fips[0]
+    def load_data(self, county_id: Iterable[str]):
+        state_id, county_id = split_county_fips(county_id)
+        state = state_id[0]
         data = get_census(
             dataset="2022/acs/acs5",
             variables=list(self.variable_dict.values()),
             params={
                 "for": f"block group: *",
-                "in": f"state: {state} county: {','.join(county_fips)}"
+                "in": f"state: {state} county: {','.join(county_id)}"
             },
             return_geoid = True,
             guess_dtypes = True,
@@ -74,7 +74,7 @@ class BaseLayerSmartLocation(BaseLayerMetric, ABC):
 
     @property
     @abstractmethod
-    def metric_field_id(cls) -> str:
+    def metric_field_id(cls) -> str | Iterable[str]:
         pass
 
     @property
@@ -91,7 +91,11 @@ class BaseLayerSmartLocation(BaseLayerMetric, ABC):
         self._set_is_loaded()
         
     def get_data_for_ids(self, ids):
-        return self.smartlocation_wrapper.gdf.loc[ids, self.metric_field_id].rename(self.metric_alias, copy=True)
+        out = self.smartlocation_wrapper.gdf.loc[ids, self.metric_field_id]
+        if type(self.metric_field_id) is not str:
+            out = out.sum(axis=1)
+        return out.rename(self.metric_alias, copy=True)
+
     
     def should_send_block_group_gdf(self) -> bool:
         return True

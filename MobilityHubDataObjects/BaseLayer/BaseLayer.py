@@ -1,4 +1,3 @@
-import math
 import pathlib
 from typing import Callable, Iterable
 import folium
@@ -90,6 +89,7 @@ class BaseLayer(SpatialDataObject):
             },
             popup=popup
         ) 
+
     def get_score_decay_function(self) -> Callable[[float], float]:
         raise NotImplementedError()
     
