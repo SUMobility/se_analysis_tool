@@ -76,7 +76,7 @@ class AFDCApiDataObject(SpatialDataObject):
             gdf_afdc_response_to_save[AFDC_FIELDS],
             geometry=gdf_afdc_response_to_save.geometry
         )
-        self._set_is_loaded
+        self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
         return self._get_scores_from_function(get_score_constant_value(5), [])
