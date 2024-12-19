@@ -169,9 +169,6 @@ def kde_smoothing(data: pd.Series, points: gpd.GeoSeries, kd_tree: KDTree, k=5, 
                 i += 1
         weights = np.exp(-(distances * distances_factor) ** 2 / (2 * bandwidth ** 2))
         smoothed_values[i] = np.sum(data_array[indices] * weights) / np.sum(weights)
-        if i % 200 == 0:
-            print(weights, smoothed_values[i], data_array[i])
-            print(distances)
     return pd.Series(
         smoothed_values,
         index=data.index

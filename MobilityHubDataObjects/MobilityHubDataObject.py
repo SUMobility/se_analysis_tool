@@ -5,7 +5,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 import shapely
-from MobilityHubDataObjects import BaseLayer, SpatialDataObject
+from MobilityHubDataObjects import BaseLayer, GTFSDataObject, SpatialDataObject
 from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
@@ -19,45 +19,41 @@ USED_BASE_LAYER_METRICS = [
     SMART_LOCATION_RAW_JOBS_NAME,
 ]
 
-MIN_DESTINATION_EMPLOYMENT = 1000
+MIN_JOB_DENSITY = 1
+POINT_BUFFER_RADIUS = 500
 
 OUTPUT_COLUMNS = ["od_type", "trunk_branch_type", "builtin_score", "od_score", "trunk_branch_score", "investment_score"]
 OUTPUT_NAMES = ["Is Destination?", "Is Trunk?", "Point Score", "OD Score", "Trunk/Branch Score", "Investment Score"]
 
 class MobilityHubDataObject(SpatialDataObject):
-    def __init__(self, component_data_objects: Iterable[SpatialDataObject], base_layer: BaseLayer):
-        self.component_data_objects = component_data_objects
+    def __init__(self, transit_stop_data_object: GTFSDataObject, base_layer: BaseLayer, local_crs):
+        self.transit_stop_data_object = transit_stop_data_object
         self.base_layer = base_layer
+        self.local_crs = local_crs
     
     def load_data(self, load_area, load_area_crs):
-        assert np.all(
-            [data_object.get_is_loaded() for data_object in self.component_data_objects]
-        ) #TODO: might be necessary to instead load each object here
+        assert self.transit_stop_data_object.get_is_loaded()
         assert np.all([metric in self.base_layer.metric_names for metric in USED_BASE_LAYER_METRICS])
-        output_gdfs = []
-        for data_object in self.component_data_objects:
-            gdf_points = data_object.gdf.loc[
-                data_object.gdf.within(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area))
-            ]
-            gdf_merged_points = assign_base_layer_vars_to_points(
-                self.base_layer.gdf, gdf_points, USED_BASE_LAYER_METRICS
-            )
-            print(data_object.get_scores().index)
-            print(data_object.gdf.index)
-            print(gdf_merged_points.index)
-            gdf_merged_points["builtin_score"] = data_object.get_scores().loc[gdf_merged_points.index].reindex(gdf_merged_points.index) #TODO: check whether this has index matching issues
-            print(gdf_merged_points["builtin_score"])
-            gdf_merged_points["od_score"] = _generate_od_score(gdf_merged_points)
-            gdf_merged_points["trunk_branch_score"] = _generate_trunk_branch_score(gdf_merged_points)
-            gdf_merged_points["od_type"] = get_quantile_ranking_series(gdf_merged_points["od_score"]) > 0.8
-            gdf_merged_points["trunk_branch_type"] = get_quantile_ranking_series(gdf_merged_points["trunk_branch_score"]) > 0.9
-            gdf_merged_points["investment_score"] = np.nan
-            # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
-            gdf_merged_points["geometry"] = gdf_merged_points.geometry
-            gdf_merged_points.geometry = gdf_merged_points["geometry"]
-            output_gdfs.append(gdf_merged_points.copy())
-        df_concat = pd.concat(output_gdfs)[[*OUTPUT_COLUMNS, "geometry"]]
-        self.gdf = gpd.GeoDataFrame(df_concat.drop("geometry", axis=1), geometry=df_concat["geometry"])
+        gdf_points = self.transit_stop_data_object.gdf.loc[
+            self.transit_stop_data_object.gdf.within(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area))
+        ]
+        gdf_merged_points = assign_base_layer_vars_to_points(
+            self.base_layer.gdf, gdf_points, USED_BASE_LAYER_METRICS
+        )
+        print(self.transit_stop_data_object.get_scores().index)
+        print(self.transit_stop_data_object.gdf.index)
+        print(gdf_merged_points.index)
+        gdf_merged_points["builtin_score"] = self.transit_stop_data_object.get_scores().loc[gdf_merged_points.index].reindex(gdf_merged_points.index) #TODO: check whether this has index matching issues
+        print(gdf_merged_points["builtin_score"])
+        gdf_merged_points["od_score"] = _generate_od_score(gdf_merged_points)
+        gdf_merged_points["trunk_branch_score"] = _generate_trunk_branch_score(gdf_merged_points)
+        gdf_merged_points["od_type"] = get_quantile_ranking_series(gdf_merged_points["od_score"]) > 0.8
+        gdf_merged_points["trunk_branch_type"] = get_quantile_ranking_series(gdf_merged_points["trunk_branch_score"]) > 0.8
+        gdf_merged_points["investment_score"] = np.nan
+        # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
+        gdf_merged_points["geometry"] = gdf_merged_points.geometry
+        gdf_merged_points.geometry = gdf_merged_points["geometry"]
+        self.gdf = gdf_merged_points[[*OUTPUT_COLUMNS, "geometry"]]
         self._set_is_loaded()
     
     def get_folium_plot(self):
@@ -100,53 +96,56 @@ def get_quantile_ranking(a: Iterable[float | int]) -> np.array:
     return [percentileofscore(a, i, kind="mean") / 100 for i in a]
 
 def _generate_od_score(gdf_merged_points):
-    gdf_base = gpd.GeoDataFrame(
+    gdf_points = gpd.GeoDataFrame(
         gdf_merged_points[USED_BASE_LAYER_METRICS], geometry=gdf_merged_points.geometry
     )
-    gdf_base["jobs_housing_ratio"] = (
-        gdf_base[SMART_LOCATION_JOB_DENSITY_NAME] / gdf_base[SMART_LOCATION_POPULATION_DENSITY_NAME]
+    gdf_points["jobs_housing_ratio"] = (
+        gdf_points[SMART_LOCATION_JOB_DENSITY_NAME] / gdf_points[SMART_LOCATION_POPULATION_DENSITY_NAME]
     )
-    gdf_base["jobs_housing_ratio_quantile"] = get_quantile_ranking_series(
-        gdf_base["jobs_housing_ratio"]
+    gdf_points["jobs_housing_ratio_quantile"] = get_quantile_ranking_series(
+        gdf_points["jobs_housing_ratio"]
     )
-    gdf_base["job_density_quantile"] = get_quantile_ranking_series(
-        gdf_base[SMART_LOCATION_JOB_DENSITY_NAME]
+    gdf_points["job_density_quantile"] = get_quantile_ranking_series(
+        gdf_points[SMART_LOCATION_JOB_DENSITY_NAME]
     )
-    gdf_base["retail_job_density_quantile"] = get_quantile_ranking_series(
-        gdf_base[SMART_LOCATION_RETAIL_ENTERTAINMENT_JOB_DENSITY_NAME]
+    gdf_points["retail_job_density_quantile"] = get_quantile_ranking_series(
+        gdf_points[SMART_LOCATION_RETAIL_ENTERTAINMENT_JOB_DENSITY_NAME]
     )
-    gdf_base["od_score"] = (
+    gdf_points["od_score"] = (
         (
-            gdf_base["jobs_housing_ratio_quantile"] * 10 
-            + gdf_base["job_density_quantile"] * 3 
-            + gdf_base["retail_job_density_quantile"] * 3
+            gdf_points["jobs_housing_ratio_quantile"] * 10 
+            + gdf_points["job_density_quantile"] * 3 
+            + gdf_points["retail_job_density_quantile"] * 3
         ) / 16
     )
-    gdf_base["od_score"] = gdf_base["od_score"].where(
-        gdf_base[SMART_LOCATION_RAW_JOBS_NAME] >= 1000, 0
+    gdf_points["od_score"] = gdf_points["od_score"].where(
+        (
+            (gdf_points[SMART_LOCATION_JOB_DENSITY_NAME] >= MIN_JOB_DENSITY )
+            | (gdf_points[SMART_LOCATION_RETAIL_ENTERTAINMENT_JOB_DENSITY_NAME] >=  MIN_JOB_DENSITY)
+        ), 0
     ) #TODO: may need to add an additional factor for small bgs or bgs with a school?
-    return gdf_base["od_score"]
+    return gdf_points["od_score"]
 
 def _generate_trunk_branch_score(gdf_merged_points):
-     gdf_base = gpd.GeoDataFrame(gdf_merged_points[[*USED_BASE_LAYER_METRICS, "builtin_score"]])
-     gdf_base["population_density_quantile"] = get_quantile_ranking_series(
-         gdf_base[SMART_LOCATION_POPULATION_DENSITY_NAME]
+     gdf_points = gpd.GeoDataFrame(gdf_merged_points[[*USED_BASE_LAYER_METRICS, "builtin_score"]])
+     gdf_points["population_density_quantile"] = get_quantile_ranking_series(
+         gdf_points[SMART_LOCATION_POPULATION_DENSITY_NAME]
         )
-     gdf_base["job_density_quantile"] = get_quantile_ranking_series(
+     gdf_points["job_density_quantile"] = get_quantile_ranking_series(
          gdf_merged_points[SMART_LOCATION_JOB_DENSITY_NAME]
      )
-     gdf_base["builtin_score_quantile"] = get_quantile_ranking_series(
+     gdf_points["builtin_score_quantile"] = get_quantile_ranking_series(
          gdf_merged_points["builtin_score"]
      )
-     gdf_base["trunk_branch_score"] = (
+     gdf_points["trunk_branch_score"] = (
          (
-             gdf_base["population_density_quantile"]
-             + gdf_base["job_density_quantile"]
-             + gdf_base["builtin_score_quantile"] * 2
+             gdf_points["population_density_quantile"]
+             + gdf_points["job_density_quantile"]
+             + gdf_points["builtin_score_quantile"] * 2
          ) / 4
      )
 
-     return gdf_base["trunk_branch_score"]
+     return gdf_points["trunk_branch_score"]
 
 def assign_base_layer_vars_to_points(gdf_base, gdf_points, base_vars):
     assert np.intersect1d(base_vars, gdf_points.columns).size == 0

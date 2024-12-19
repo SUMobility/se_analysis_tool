@@ -1,8 +1,9 @@
 import numpy as np
+from MobilityHubDataObjects.constants import FERRY, METRO, MONORAIL, RAIL, TRAM
 from MobilityHubDataObjects.utils import safe_is_na
 from typing import Callable
 
-def score_transit_stops(headway_string: str) -> float:
+def score_transit_stops(headway_string: str, mode: str) -> float:
     if safe_is_na(headway_string) or headway_string == "":
         return np.nan
     score = 0
@@ -11,7 +12,9 @@ def score_transit_stops(headway_string: str) -> float:
             score += 0
         else:
             # weird fugly sigmoid just as a demo
-            score += max(0, -10 * (1 / (1 + np.e ** (-(float(headway) - 17)/5))) + 10.3229)
+            score += max(0, -10 * (1 / (1 + np.e ** (-(float(headway) - 17)/5))) + 10.3229) # <- lovely consts
+            if mode in [METRO, RAIL, FERRY, TRAM, MONORAIL]:
+                score += 10
     return score
 
 def get_score_constant_value(value: float) -> Callable[[], float]:

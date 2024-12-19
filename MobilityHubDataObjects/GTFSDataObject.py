@@ -276,7 +276,7 @@ class GTFSDataObject(SpatialDataObject):
         self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
-        return self._get_scores_from_function(score_transit_stops, "headway_string")
+        return self._get_scores_from_function(score_transit_stops, ["headway_string", "primary_mode"])
 
     def get_score_decay_function(self) -> Callable[[float], float]:
         return get_linear_decay_function(500)

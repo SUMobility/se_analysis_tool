@@ -38,7 +38,7 @@ class SpatialDataObject(ABC):
     def _get_scores_from_function(self, score_function, score_fields) -> pd.Series:
         if type(score_fields) is list and len(score_fields) > 1:
             assert len(np.intersect1d(score_fields, self.gdf.columns)) == len(score_fields)
-            return self.gdf.apply(score_function, axis=1)
+            return self.gdf[score_fields].apply(lambda values: score_function(*values), axis=1)
         elif type(score_fields) is list and len(score_fields) == 0:
             return pd.Series(score_function(), index=self.gdf.index)
         elif type(score_fields) is list:
