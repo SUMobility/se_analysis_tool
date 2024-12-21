@@ -57,14 +57,7 @@ class BaseLayer(SpatialDataObject):
         )
         gdf_tiger = erase_water(gdf_tiger.loc[gdf_tiger.intersects(load_area)])
         gdf_tiger = gdf_tiger.set_index("GEOID")
-        block_group_kd_tree = None
         block_group_centroids = gdf_tiger.to_crs(self.local_crs).centroid
-        if self.smooth:
-            print("generating kd tree")
-            block_group_kd_tree = KDTree(
-                np.array([[point.x, point.y] for point in block_group_centroids])
-            )
-            print("generated kd tree")
         metric_names = []
         for metric in self.metrics:
             # Load each metric
@@ -75,8 +68,7 @@ class BaseLayer(SpatialDataObject):
             metric_series = metric.get_data_for_ids(gdf_tiger.index)
             print(f"Loaded {metric_series.name}")
             if self.smooth:
-                assert block_group_kd_tree is not None
-                gdf_tiger[metric_series.name] = kde_smoothing(metric_series, block_group_centroids, block_group_kd_tree)
+                gdf_tiger[metric_series.name] = kde_smoothing(metric_series, block_group_centroids)
             else:
                 gdf_tiger[metric_series.name] = metric_series
             metric_names.append(metric_series.name)
@@ -111,7 +103,7 @@ class BaseLayer(SpatialDataObject):
     def get_scores(self) -> pd.Series:
         raise NotImplementedError
 
-def kde_smoothing(data: pd.Series, points: gpd.GeoSeries, kd_tree: KDTree, k=5, bandwidth=0.005, distances_factor = 1/100000):
+def kde_smoothing(data: pd.Series, points_dropped: gpd.GeoSeries, k=5, bandwidth=0.005, distances_factor = 1/100000):
     """
     Run a kde smoothing algorithm
 
@@ -122,51 +114,21 @@ def kde_smoothing(data: pd.Series, points: gpd.GeoSeries, kd_tree: KDTree, k=5, 
     :param bandwidth: the bandwidth parameter for the Gaussian smopthing algorithm. Higher bandwith = further points have more weight, defaults to 0.1
     :param distances_factor: the amount to multiply distances by, defaults to 1/100000 to keep values of d^2 reasonably sized and avoid floating point error
     """
-    assert data.index.size == points.index.size and (data.index == points.index).all()
+    # Build kd tree
+    assert data.index.size == points_dropped.index.size and (data.index == points_dropped.index).all()
     # Handle each column, running columns without na values in bulk and running columns with na values together
     #count_na_values = {column: data[column].isna().sum() for column in data.columns}
     data_dropped = data.dropna()
-    points = points.reindex_like(data_dropped)
-    any_values_dropped = data_dropped.size != data.size
+    points_dropped = points_dropped.reindex_like(data_dropped)
+    points_dropped_array = np.array([[point.x, point.y] for point in points_dropped.to_numpy()])
+    kd_tree = KDTree(points_dropped_array)
     value_is_dropped = ~data.index.isin(data_dropped.index)
     smoothed_values = np.zeros_like(data)
     data_array = data.to_numpy()
-    geom_array = np.array([[point.x, point.y] for point in points])
-    for i, point in enumerate(geom_array):
+    for i, point in enumerate(points_dropped_array):
         if value_is_dropped[i]:
             continue
         distances, indices = kd_tree.query(point, k=k)
-        if any_values_dropped:
-            i = 0
-            while True:
-                selected_value_is_dropped = [value_is_dropped[i] for i in indices]
-                if not np.any(selected_value_is_dropped):
-                    break
-                count_dropped = np.sum(selected_value_is_dropped)
-                old_indices = indices
-                old_distances = distances
-                new_distances, new_indices = kd_tree.query(point, k=k+count_dropped)
-                indices = np.array([
-                    i for i in new_indices if not (value_is_dropped[i] and i in old_indices)
-                ])
-                distances = np.array([
-                    dist for i, dist in enumerate(new_distances) if not (
-                        value_is_dropped[new_indices[i]] and new_indices[i] in old_indices
-                    )
-                ])
-                if len(indices) != len(distances):
-                    print(indices, distances)
-                    assert True==False #WHY WOULD THIS EVER HAPPEN
-                if i > 20:
-                    print("WARN: trapped in an infinite loop, using k < specified k")
-                    indices = np.array([
-                        i for i in old_indices if not value_is_dropped[i]
-                    ])
-                    distances = np.array([
-                        dist for i, dist in enumerate(old_distances) if not value_is_dropped[old_indices[i]]
-                    ])
-                    break
-                i += 1
         weights = np.exp(-(distances * distances_factor) ** 2 / (2 * bandwidth ** 2))
         smoothed_values[i] = np.sum(data_array[indices] * weights) / np.sum(weights)
     return pd.Series(
