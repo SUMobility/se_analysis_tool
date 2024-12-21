@@ -9,7 +9,7 @@ from MobilityHubDataObjects import BaseLayer, GTFSDataObject, SpatialDataObject
 from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
-from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.constants import GEODESIC_CRS, HIGH_COMFORT_MODES
 from MobilityHubDataObjects.utils import basic_circle_marker, transform_shapely_geometry
 
 USED_BASE_LAYER_METRICS = [
@@ -22,8 +22,8 @@ USED_BASE_LAYER_METRICS = [
 MIN_JOB_DENSITY = 1
 POINT_BUFFER_RADIUS = 500
 
-OUTPUT_COLUMNS = ["od_type", "trunk_branch_type", "builtin_score", "od_score", "trunk_branch_score", "investment_score"]
-OUTPUT_NAMES = ["Is Destination?", "Is Trunk?", "Point Score", "OD Score", "Trunk/Branch Score", "Investment Score"]
+OUTPUT_COLUMNS = ["od_type", "trunk_branch_type", "stop_score", "od_score", "trunk_branch_score", "trunk_branch_override", "investment_score","primary_mode", "pretty_printed_headway", "min_headway"]
+OUTPUT_NAMES = ["Is Destination?", "Is Trunk?", "Point Score", "OD Score", "Trunk/Branch Score", "Trunk/Branch Override", "Investment Score", "Mode", "Headway", "Best Headway"]
 
 class MobilityHubDataObject(SpatialDataObject):
     def __init__(self, transit_stop_data_object: GTFSDataObject, base_layer: BaseLayer, local_crs):
@@ -37,23 +37,25 @@ class MobilityHubDataObject(SpatialDataObject):
         gdf_points = self.transit_stop_data_object.gdf.loc[
             self.transit_stop_data_object.gdf.within(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area))
         ]
-        gdf_merged_points = assign_base_layer_vars_to_points(
+        gdf_merged_transit_stops = assign_base_layer_vars_to_points(
             self.base_layer.gdf, gdf_points, USED_BASE_LAYER_METRICS
+        ).rename(columns={"score": "stop_score"})
+        gdf_merged_transit_stops["od_score"] = _generate_od_score(gdf_merged_transit_stops)
+        gdf_merged_transit_stops["trunk_branch_score"] = _generate_trunk_branch_score(gdf_merged_transit_stops)
+        gdf_merged_transit_stops["trunk_branch_override"] = (
+            (gdf_merged_transit_stops["min_headway"] <= 30)
+            & (gdf_merged_transit_stops["min_headway"] > 0) 
+            & gdf_merged_transit_stops["primary_mode"].isin(HIGH_COMFORT_MODES)
         )
-        print(self.transit_stop_data_object.get_scores().index)
-        print(self.transit_stop_data_object.gdf.index)
-        print(gdf_merged_points.index)
-        gdf_merged_points["builtin_score"] = self.transit_stop_data_object.get_scores().loc[gdf_merged_points.index].reindex(gdf_merged_points.index) #TODO: check whether this has index matching issues
-        print(gdf_merged_points["builtin_score"])
-        gdf_merged_points["od_score"] = _generate_od_score(gdf_merged_points)
-        gdf_merged_points["trunk_branch_score"] = _generate_trunk_branch_score(gdf_merged_points)
-        gdf_merged_points["od_type"] = get_quantile_ranking_series(gdf_merged_points["od_score"]) > 0.8
-        gdf_merged_points["trunk_branch_type"] = get_quantile_ranking_series(gdf_merged_points["trunk_branch_score"]) > 0.8
-        gdf_merged_points["investment_score"] = np.nan
+        gdf_merged_transit_stops["od_type"] = get_quantile_ranking_series(gdf_merged_transit_stops["od_score"]) > 0.8
+        gdf_merged_transit_stops["trunk_branch_type"] = (
+            (get_quantile_ranking_series(gdf_merged_transit_stops["trunk_branch_score"]) > 0.8) | gdf_merged_transit_stops["trunk_branch_override"]
+        )
+        gdf_merged_transit_stops["investment_score"] = np.nan
         # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
-        gdf_merged_points["geometry"] = gdf_merged_points.geometry
-        gdf_merged_points.geometry = gdf_merged_points["geometry"]
-        self.gdf = gdf_merged_points[[*OUTPUT_COLUMNS, "geometry"]]
+        gdf_merged_transit_stops["geometry"] = gdf_merged_transit_stops.geometry
+        gdf_merged_transit_stops.geometry = gdf_merged_transit_stops["geometry"]
+        self.gdf = gdf_merged_transit_stops[[*OUTPUT_COLUMNS, "geometry"]]
         self._set_is_loaded()
     
     def get_folium_plot(self):
@@ -127,21 +129,21 @@ def _generate_od_score(gdf_merged_points):
     return gdf_points["od_score"]
 
 def _generate_trunk_branch_score(gdf_merged_points):
-     gdf_points = gpd.GeoDataFrame(gdf_merged_points[[*USED_BASE_LAYER_METRICS, "builtin_score"]])
+     gdf_points = gpd.GeoDataFrame(gdf_merged_points[[*USED_BASE_LAYER_METRICS, "stop_score"]])
      gdf_points["population_density_quantile"] = get_quantile_ranking_series(
          gdf_points[SMART_LOCATION_POPULATION_DENSITY_NAME]
         )
      gdf_points["job_density_quantile"] = get_quantile_ranking_series(
          gdf_merged_points[SMART_LOCATION_JOB_DENSITY_NAME]
      )
-     gdf_points["builtin_score_quantile"] = get_quantile_ranking_series(
-         gdf_merged_points["builtin_score"]
+     gdf_points["stop_score_quantile"] = get_quantile_ranking_series(
+         gdf_merged_points["stop_score"]
      )
      gdf_points["trunk_branch_score"] = (
          (
              gdf_points["population_density_quantile"]
              + gdf_points["job_density_quantile"]
-             + gdf_points["builtin_score_quantile"] * 2
+             + gdf_points["stop_score_quantile"] * 2
          ) / 4
      )
 

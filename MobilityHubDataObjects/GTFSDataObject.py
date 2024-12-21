@@ -15,10 +15,36 @@ from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, download_latest_feed_version_from_transitland, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
-from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP
+from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
 
-BIKE_FIELDS = ["agency_id", "agency_name", "stop_id", "stop_name", "primary_mode", "pretty_printed_headway", "score"]
-BIKE_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
+GTFS_FEEDS_FIELDS_TO_STORE = [
+    "name",
+    "agency_url",
+    "url",
+    "raw_feed_path",
+    "processed_file_path",
+    "last_fetched",
+    #"last_valid_date",
+    "attribution_url",
+    "attribution_text",
+    "attribution_instructions",
+    "attribution_must_attribute",
+    "last_fetch_succeeded",
+]
+GTFS_STOPS_FIELDS_TO_DISPLAY = [
+    "agency_id",
+    "agency_name",
+    "stop_id",
+    "stop_name",
+    "primary_mode_display",
+    "pretty_printed_headway",
+    "score",
+]
+GTFS_FIELDS_TO_KEEP = [
+    *GTFS_STOPS_FIELDS_TO_DISPLAY,
+
+]
+GTFS_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
 
 class GTFSDataObject(SpatialDataObject):
     df_feeds_metadata = None
@@ -86,20 +112,6 @@ class GTFSDataObject(SpatialDataObject):
             df_override_feeds = pd.read_csv(self.gtfs_override_feeds_path, index_col=0)
         else:
             df_override_feeds = pd.DataFrame(index=[])
-        feeds_columns = [
-                "name",
-                "agency_url",
-                "url",
-                "raw_feed_path",
-                "processed_file_path",
-                "last_fetched",
-                #"last_valid_date",
-                "attribution_url",
-                "attribution_text",
-                "attribution_instructions",
-                "attribution_must_attribute",
-                "last_fetch_succeeded",
-            ]
         feeds_metadata_path = self.gtfs_cache_path / "feeds.csv"
         stops_geometry_path = self.gtfs_cache_path / "processed_stops.geojson"
         try:
@@ -110,7 +122,7 @@ class GTFSDataObject(SpatialDataObject):
         except FileNotFoundError:
             print("INFO: Did not load feeds metadata, generating a new file")
             df_feeds_metadata = pd.DataFrame(
-                columns=feeds_columns,
+                columns=GTFS_FEEDS_FIELDS_TO_STORE,
             )
         try:
             gdf_cached_frequent_stops = gpd.read_file(stops_geometry_path)
@@ -224,7 +236,7 @@ class GTFSDataObject(SpatialDataObject):
                 if df_feed_stops_with_headway is not None:
                     df_feed_stops_with_headway["min_headway"] = df_feed_stops_with_headway["headway"].map(
                         lambda x: np.nan if safe_is_na(x) else min(x.values())
-                    )
+                    ).astype(np.float64) # This astype is necessary, since otherwise Geopandas will delete the column when saved to geojson
                     df_feed_stops_with_headway["pretty_printed_headway"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_pretty_printed_headway
                     )
@@ -232,6 +244,9 @@ class GTFSDataObject(SpatialDataObject):
                     df_feed_stops_with_headway["score"] = df_feed_stops_with_headway["headway"].map(score_stop)
                     df_feed_stops_with_headway["primary_mode"] = df_feed_stops_with_headway["headway"].map(
                         feed_object.get_primary_mode_from_headway
+                    )
+                    df_feed_stops_with_headway["primary_mode_display_name"] = df_feed_stops_with_headway["primary_mode"].map(
+                        ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
                     )
                     df_frequent_stops = df_feed_stops_with_headway.loc[df_feed_stops_with_headway["min_headway"] <= self.min_headway]
                     gdf_frequent_stops = gpd.GeoDataFrame(
@@ -250,21 +265,23 @@ class GTFSDataObject(SpatialDataObject):
         # Merge newly downloaded and cached stops
         print(f"PRINTING ALL PROCESSED AGENCY IDS: {", ".join(processed_agency_ids)}")
         if len(frequent_stops_gdf_list) > 0:
-            gdf_downloaded_frequent_stops = pd.concat(frequent_stops_gdf_list)
-            print(f"AGENCIES: {gdf_downloaded_frequent_stops["agency_id"].unique()}")
-            gdf_cached_frequent_stops_to_keep = gpd.GeoDataFrame(columns=gdf_downloaded_frequent_stops.columns)
+            gdf_new_frequent_stops = pd.concat(frequent_stops_gdf_list)
+            print(f"AGENCIES: {gdf_new_frequent_stops["agency_id"].unique()}")
+            gdf_cached_frequent_stops_to_keep = gpd.GeoDataFrame(columns=gdf_new_frequent_stops.columns)
             if len(gdf_cached_frequent_stops) > 0:
                 gdf_cached_frequent_stops_to_keep = gdf_cached_frequent_stops.loc[
                     ~gdf_cached_frequent_stops["agency_id"].isin(processed_agency_ids)
                 ]
             assert (
                 np.intersect1d(
-                    gdf_downloaded_frequent_stops["agency_id"].unique(),
+                    gdf_new_frequent_stops["agency_id"].unique(),
                     gdf_cached_frequent_stops_to_keep["agency_id"].unique(),
                 ).size == 0
             )
+            print("CACHED", list(gdf_cached_frequent_stops.columns))
+            print("NEW", list(gdf_new_frequent_stops.columns))
             self.gdf = pd.concat(
-                [gdf_downloaded_frequent_stops, gdf_cached_frequent_stops_to_keep]
+                [gdf_new_frequent_stops, gdf_cached_frequent_stops_to_keep]
             ).drop("headway", axis=1)
             # Save result to a file
             self.gdf.to_file(stops_geometry_path)
@@ -283,12 +300,12 @@ class GTFSDataObject(SpatialDataObject):
 
     def get_folium_plot(self) -> folium.GeoJson:
         gtfs_popup = folium.GeoJsonPopup(
-            fields=BIKE_FIELDS,
-            aliases=BIKE_ALIASES,
+            fields=GTFS_STOPS_FIELDS_TO_DISPLAY,
+            aliases=GTFS_ALIASES,
         )
         max_sqrt_score = np.percentile(np.sqrt(self.gdf["score"]), 98)
         gtfs_geojson = folium.GeoJson(
-            self.gdf.drop("headway_list", axis=1, errors="ignore"),
+            self.gdf[[*GTFS_STOPS_FIELDS_TO_DISPLAY, self.gdf.geometry.name]],
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function=lambda x: {
