@@ -11,7 +11,7 @@ import geopandas as gpd
 import pathlib
 from urllib.parse import urlparse
 
-from MobilityHubDataObjects.GTFSFeedWrapper import GTFSFeedWrapper
+from MobilityHubDataObjects.GTFSFeedWrapperLegacy import GTFSFeedWrapperLegacy
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, download_latest_feed_version_from_transitland, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
@@ -46,7 +46,7 @@ GTFS_FIELDS_TO_KEEP = [
 ]
 GTFS_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
 
-class GTFSDataObject(SpatialDataObject):
+class GTFSDataObjectLegacy(SpatialDataObject):
     df_feeds_metadata = None
     load_area = None
     gdf = gpd.GeoDataFrame()
@@ -201,7 +201,7 @@ class GTFSDataObject(SpatialDataObject):
                 feed_must_attribute = yes_no_to_bool(feed["license"]["use_without_attribution"])
                 #TODO: figure out feed object to get agency name and url and run feedutils functions without needing to load a new feed each time
                 # Process frequent stops
-                feed_object = GTFSFeedWrapper(feed_output_path)
+                feed_object = GTFSFeedWrapperLegacy(feed_output_path)
                 if not feed_object.get_feed_loaded_correctly():
                     df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                     continue 

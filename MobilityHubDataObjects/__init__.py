@@ -2,22 +2,23 @@ from .FTAFacilityInventoryDataObject import *
 from .OSMBikeParkingDataObject import *
 from .SpatialDataObject import *
 from .AFDCApiDataObject import *
-from .GTFSDataObject import *
+from .GTFSDataObjectLegacy import *
 from .constants import *
-from .GTFSFeedWrapper import *
+from .GTFSFeedWrapperLegacy import *
 from .CityBikesDataObject import *
 from .scoreFunctions import *
 from .ScoreWrapper import *
 from .BaseLayer import *
 from .OSMBikeStreetsDataObject import *
 from .MobilityHubDataObject import *
+from .transitWrappers import *
 
 __all__ = [
     "AFDCApiDataObject",
     "SpatialDataObject",
-    "GTFSFeedWrapper",
+    "GTFSFeedWrapperLegacy",
     "FTAFacilityInventoryDataObject",
-    "GTFSDataObject",
+    "GTFSDataObjectLegacy",
     "OSMBikeParkingDataObject",
     "CityBikesDataObject",
     "ScoreWrapper",
@@ -29,6 +30,7 @@ __all__ = [
     "CensusPopulation",
     "ColorMaps",
     "OSMBikeStreetsDataObject",
-    "MobilityHubDataObject"
+    "MobilityHubDataObject",
+    "transitWrappers",
 ]
 #%%

@@ -10,7 +10,7 @@ from MobilityHubDataObjects.constants import GEODESIC_CRS, GTFS_ROUTE_TYPE_TO_ID
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
 
 
-class GTFSFeedWrapper:
+class GTFSFeedWrapperLegacy:
     # Public
     loaded = False
     def __init__(self, feed_path: str | pathlib.Path):

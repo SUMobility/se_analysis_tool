@@ -5,7 +5,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 import shapely
-from MobilityHubDataObjects import BaseLayer, GTFSDataObject, SpatialDataObject
+from MobilityHubDataObjects import BaseLayer, GTFSDataObjectLegacy, SpatialDataObject
 from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
@@ -22,11 +22,11 @@ USED_BASE_LAYER_METRICS = [
 MIN_JOB_DENSITY = 1
 POINT_BUFFER_RADIUS = 500
 
-OUTPUT_COLUMNS = ["od_type", "trunk_branch_type", "stop_score", "od_score", "trunk_branch_score", "trunk_branch_override", "investment_score","primary_mode", "pretty_printed_headway", "min_headway"]
-OUTPUT_NAMES = ["Is Destination?", "Is Trunk?", "Point Score", "OD Score", "Trunk/Branch Score", "Trunk/Branch Override", "Investment Score", "Mode", "Headway", "Best Headway"]
+OUTPUT_COLUMNS = ["od_type", "trunk_branch_type", "stop_score", "od_score", "investment_score","primary_mode", "pretty_printed_headway", "min_headway"]
+OUTPUT_NAMES = ["Is Destination?", "Is Trunk?", "Point Score", "OD Score", "Investment Score", "Mode", "Headway", "Best Headway"]
 
 class MobilityHubDataObject(SpatialDataObject):
-    def __init__(self, transit_stop_data_object: GTFSDataObject, base_layer: BaseLayer, local_crs):
+    def __init__(self, transit_stop_data_object: GTFSDataObjectLegacy, base_layer: BaseLayer, local_crs):
         self.transit_stop_data_object = transit_stop_data_object
         self.base_layer = base_layer
         self.local_crs = local_crs
@@ -41,16 +41,8 @@ class MobilityHubDataObject(SpatialDataObject):
             self.base_layer.gdf, gdf_points, USED_BASE_LAYER_METRICS
         ).rename(columns={"score": "stop_score"})
         gdf_merged_transit_stops["od_score"] = _generate_od_score(gdf_merged_transit_stops)
-        gdf_merged_transit_stops["trunk_branch_score"] = _generate_trunk_branch_score(gdf_merged_transit_stops)
-        gdf_merged_transit_stops["trunk_branch_override"] = (
-            (gdf_merged_transit_stops["min_headway"] <= 30)
-            & (gdf_merged_transit_stops["min_headway"] > 0) 
-            & gdf_merged_transit_stops["primary_mode"].isin(HIGH_COMFORT_MODES)
-        )
         gdf_merged_transit_stops["od_type"] = get_quantile_ranking_series(gdf_merged_transit_stops["od_score"]) > 0.8
-        gdf_merged_transit_stops["trunk_branch_type"] = (
-            (get_quantile_ranking_series(gdf_merged_transit_stops["trunk_branch_score"]) > 0.8) | gdf_merged_transit_stops["trunk_branch_override"]
-        )
+        gdf_merged_transit_stops["trunk_branch_type"] = np.nan
         gdf_merged_transit_stops["investment_score"] = np.nan
         # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
         gdf_merged_transit_stops["geometry"] = gdf_merged_transit_stops.geometry
@@ -128,26 +120,11 @@ def _generate_od_score(gdf_merged_points):
     ) #TODO: may need to add an additional factor for small bgs or bgs with a school?
     return gdf_points["od_score"]
 
-def _generate_trunk_branch_score(gdf_merged_points):
-     gdf_points = gpd.GeoDataFrame(gdf_merged_points[[*USED_BASE_LAYER_METRICS, "stop_score"]])
-     gdf_points["population_density_quantile"] = get_quantile_ranking_series(
-         gdf_points[SMART_LOCATION_POPULATION_DENSITY_NAME]
-        )
-     gdf_points["job_density_quantile"] = get_quantile_ranking_series(
-         gdf_merged_points[SMART_LOCATION_JOB_DENSITY_NAME]
-     )
-     gdf_points["stop_score_quantile"] = get_quantile_ranking_series(
-         gdf_merged_points["stop_score"]
-     )
-     gdf_points["trunk_branch_score"] = (
-         (
-             gdf_points["population_density_quantile"]
-             + gdf_points["job_density_quantile"]
-             + gdf_points["stop_score_quantile"] * 2
-         ) / 4
-     )
+def _classify_trunk_branch(gdf_stops):
+    gdf_stops = gdf_stops.copy()
+    raise NotImplementedError()
+    
 
-     return gdf_points["trunk_branch_score"]
 
 def assign_base_layer_vars_to_points(gdf_base, gdf_points, base_vars):
     assert np.intersect1d(base_vars, gdf_points.columns).size == 0
