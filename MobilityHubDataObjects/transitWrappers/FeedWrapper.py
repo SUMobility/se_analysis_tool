@@ -7,6 +7,7 @@ import geopandas as gpd
 import traceback
 
 from MobilityHubDataObjects.constants import GEODESIC_CRS, GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP
+from MobilityHubDataObjects.transitWrappers.TransitNetwork import MIN_TRIPS
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
 
 
@@ -69,6 +70,16 @@ class FeedWrapper:
         )
         self.df_routes["route_mode_key"] = self.df_routes["route_type"].map(GTFS_ROUTE_TYPE_TO_ID_MAP)
 
+        # Get dfs with trip patterns
+        df_trips_with_stop_tuple = self._get_trips_by_stop_tuple()
+        self.df_service_patterns = self._get_service_pattern_df(df_trips_with_stop_tuple, MIN_TRIPS)
+        self.df_trips = self._get_trips_by_service_pattern_id(
+            df_trips_with_stop_tuple, self.df_service_patterns
+        )
+        self.df_stop_times = self._get_stop_times_by_service_pattern(
+            self.df_trips
+        )
+
         # Create stops df
         df_stops = self.feed.stops.copy()
         gdf_stops = gpd.GeoDataFrame(
@@ -80,38 +91,7 @@ class FeedWrapper:
             gdf_stops.within(transform_shapely_geometry(filter_area_crs, GEODESIC_CRS, filter_area))
         ]
         self.gdf_stops = gdf_stops_in_area.copy().set_index("stop_id")
-        self.feed_loaded = True
-    
-    def load_headways(
-        self,
-        time_start: dt.time,
-        time_end: dt.time,
-        percentile: int,
-        trip_cutoff: int = 5,
-    ) -> pd.Series:
-        if not self.feed_loaded:
-            return self._print_feed_not_loaded_error()
-        headway_column_name = self._get_headway_column_name(time_start, time_end)
-        if headway_column_name in self.gdf_stops:
-            print("WARN: overriding already loaded headway")
-        headway_series = self.gdf["stop_id"].map(
-            lambda stop_id: self._get_percentile_headway_minutes_for_stop(
-                stop_id=stop_id, 
-                time_start=time_to_int(time_start),
-                time_end=time_to_int(time_end),
-                percentile=percentile,
-                trip_cutoff=trip_cutoff
-            )
-        ).rename(headway_column_name)
-        return headway_series
-    
-    def load_frequencies(
-        self,   
-        time_start,
-        time_end
-    ):
-        raise NotImplementedError
-    
+        self.feed_loaded = True 
     
     def get_agency_name(self) -> str | float:
         if not self.feed_loaded:
@@ -125,44 +105,10 @@ class FeedWrapper:
         if not self.feed_loaded:
             return self._print_feed_not_loaded_error()
         return self.feed.agency.agency_url
-    
-    def get_pretty_printed_headway(self, stop_headway_object: dict):
-        # TODO: refactor to TransitStop
-        if not self.feed_loaded:
-            return self._print_feed_not_loaded_error()
-        if safe_is_na(stop_headway_object):
-            return np.nan
-        def get_headway_mins(headway_mins: int) -> str:
-            if headway_mins == -1:
-                return "Infrequent Service"
-            else:
-                return f"{headway_mins} mins"
-        return ", ".join(
-            [f"{self.df_routes.loc[route_id[0], "route_aggregated_name"]} - {route_id[1]}: {get_headway_mins(stop_headway_object[route_id])}" for route_id in stop_headway_object]
-        ) 
-
-    def get_primary_mode_from_headway(self, stop_headway_object: dict):
-        # Refactor to TransitStop
-        if not self.feed_loaded:
-            return self._print_feed_not_loaded_error()
-        if safe_is_na(stop_headway_object):
-            return np.nan
-        route_ids = [route_direction_pair[0] for route_direction_pair in stop_headway_object.keys()]
-        if len(route_ids) == 0:
-            return np.nan
-        route_type_ids = self.df_routes.loc[route_ids, "route_mode_key"].unique()
-        primary_mode_id = sorted(route_type_ids, key=lambda x: ROUTE_PRIORITY_MAP[x])[0]
-        return primary_mode_id
-
-    def get_headway_string_from_headway(self, stop_headway_object: dict) -> list[float]:
-        # Refactor to TransitStop
-        if safe_is_na(stop_headway_object):
-            return ""
-        return ",".join(map(lambda x: str(x), filter(lambda x: x > 0, stop_headway_object.values())))
 
     def get_last_valid_date(self):
         #TODO: implement
-        pass
+        raise NotImplementedError()
     
     def get_feed_loaded_correctly(self):
         return self.feed_loaded
@@ -189,30 +135,59 @@ class FeedWrapper:
         )
         return route_direction_pair
 
-    def get_service_patterns_for_route(self, route_id, min_combination_count):
+    def get_service_patterns_for_route(self, route_id):
         # Validate that a valid route id has been chosen
         if route_id not in self.df_routes.index:
             raise KeyError(f"Route {route_id} is not present in feed")
-        df_trips = self.feed.trips.copy() 
-        df_trips_in_route = df_trips.loc[df_trips["route_id"] == route_id]
-        df_stop_times = self.feed.stop_times.copy()
-        df_stop_times_in_route = df_stop_times.loc[ # potential slow line?
-            df_stop_times["trip_id"].isin(df_trips_in_route["trip_id"]) 
-        ].sort_values(
-            ["trip_id", "stop_sequence"]
-        )
-        df_trips_in_route["stop_tuple"] = df_trips_in_route["trip_id"].map( #TODO: this should be a groupby instead
-            lambda trip_id: tuple(df_stop_times_in_route.loc[df_stop_times_in_route["trip_id"] == trip_id, "stop_id"].to_numpy())
-        )
-        service_patterns = df_trips_in_route["stop_tuple"].value_counts()
-        return list(service_patterns.loc[service_patterns > min_combination_count].index)
+        return self.df_service_patterns.loc[self.df_service_patterns["route_id"] == route_id]
 
     # "Private"
+    def _get_trips_by_stop_tuple(self):
+        df_stop_times_indexed_by_trip = self.feed.stop_times.set_index("trip_id")
+        df_trips = self.feed.trips.copy()
+        df_trips["stop_tuple"] = df_trips["trip_id"].map(
+            lambda trip_id: tuple(df_stop_times_indexed_by_trip.loc[trip_id, "stop_id"].values)
+        )
+        return df_trips.copy()
+
+    @staticmethod
+    def _get_service_pattern_df(df_trips_with_stop_tuple, min_combination_count):
+        service_pattern_counts = df_trips_with_stop_tuple["stop_tuple"].value_counts()
+        df_service_patterns = df_trips_with_stop_tuple[["route_id", "stop_tuple"]].drop_duplicates()
+        df_service_patterns_filtered = df_service_patterns.set_index("stop_tuple").loc[
+            service_pattern_counts.loc[df_service_patterns["stop_tuple"]] >= min_combination_count
+        ].reset_index().sort_values("route_id")
+        df_service_patterns_filtered["temp_count"] = df_service_patterns_filtered.index.copy()
+        df_service_patterns_filtered[
+            "service_pattern_id_no_route"
+        ] = df_service_patterns_filtered.groupby("route_id")["temp_count"].cumcount().astype(str)
+        df_service_patterns_filtered.drop("temp_count", axis=1, inplace=True)
+        df_service_patterns_filtered["service_pattern_id"] = df_service_patterns_filtered["route_id"] + "_" + df_service_patterns_filtered["service_pattern_id_no_route"]
+        return df_service_patterns_filtered.copy()
+
+    @staticmethod
+    def _get_trips_by_service_pattern_id(df_trips_with_stop_tuple, df_service_patterns):
+        return df_trips_with_stop_tuple.merge(
+            df_service_patterns[["stop_tuple", "service_pattern_id"]],
+            how="left",
+            on="stop_tuple",
+            validate="many_to_one"
+        ).drop("stop_tuple", axis=1).set_index("service_pattern_id").sort_index().copy()
+
+    def _get_stop_times_by_service_pattern(self, df_trips_with_service_patterns):
+        df_stop_times_with_service_pattern_id = self.feed.stop_times.merge(
+            df_trips_with_service_patterns.reset_index()[
+                ["trip_id", "service_pattern_id"]
+            ],
+            how="left",
+            on=["trip_id"],
+            validate="many_to_one"
+        )
+        return df_stop_times_with_service_pattern_id.set_index(["stop_id", "trip_id"])
     @staticmethod
     def _get_headway_column_name(time_start: dt.time, time_end: dt.time) -> str:
         """Get the column name for the headway column with the given start and end times"""
         return f"headway_{time_start.hour}:{time_start.min}-{time_end.hour}-{time_end.min}"
-
 
     def _print_feed_not_loaded_error(self):
         raise RuntimeError("Cannot call any functions on an unloaded feed")
