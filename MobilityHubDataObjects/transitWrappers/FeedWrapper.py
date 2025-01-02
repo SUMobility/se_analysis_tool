@@ -76,7 +76,7 @@ class FeedWrapper:
         self.df_trips = self._get_trips_by_service_pattern_id(
             df_trips_with_stop_tuple, self.df_service_patterns
         )
-        self.df_stop_times = self._get_stop_times_by_service_pattern(
+        self.df_stop_times = self._get_stop_times_with_service_pattern(
             self.df_trips
         )
 
@@ -139,7 +139,7 @@ class FeedWrapper:
         # Validate that a valid route id has been chosen
         if route_id not in self.df_routes.index:
             raise KeyError(f"Route {route_id} is not present in feed")
-        return self.df_service_patterns.loc[self.df_service_patterns["route_id"] == route_id]
+        return self.df_service_patterns.index.loc[self.df_service_patterns["route_id"] == route_id]
 
     # "Private"
     def _get_trips_by_stop_tuple(self):
@@ -163,7 +163,7 @@ class FeedWrapper:
         ] = df_service_patterns_filtered.groupby("route_id")["temp_count"].cumcount().astype(str)
         df_service_patterns_filtered.drop("temp_count", axis=1, inplace=True)
         df_service_patterns_filtered["service_pattern_id"] = df_service_patterns_filtered["route_id"] + "_" + df_service_patterns_filtered["service_pattern_id_no_route"]
-        return df_service_patterns_filtered.copy()
+        return df_service_patterns_filtered
 
     @staticmethod
     def _get_trips_by_service_pattern_id(df_trips_with_stop_tuple, df_service_patterns):
@@ -174,7 +174,7 @@ class FeedWrapper:
             validate="many_to_one"
         ).drop("stop_tuple", axis=1).set_index("service_pattern_id").sort_index().copy()
 
-    def _get_stop_times_by_service_pattern(self, df_trips_with_service_patterns):
+    def _get_stop_times_with_service_pattern(self, df_trips_with_service_patterns):
         df_stop_times_with_service_pattern_id = self.feed.stop_times.merge(
             df_trips_with_service_patterns.reset_index()[
                 ["trip_id", "service_pattern_id"]
@@ -183,7 +183,7 @@ class FeedWrapper:
             on=["trip_id"],
             validate="many_to_one"
         )
-        return df_stop_times_with_service_pattern_id.set_index(["stop_id", "trip_id"])
+        return df_stop_times_with_service_pattern_id.reset_index()
     @staticmethod
     def _get_headway_column_name(time_start: dt.time, time_end: dt.time) -> str:
         """Get the column name for the headway column with the given start and end times"""
