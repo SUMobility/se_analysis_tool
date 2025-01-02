@@ -97,6 +97,7 @@ class TransitNetwork:
             {
                 "feed": feed_id,
                 "route_id": self._transform_route_ids(feed_id, feed.df_service_patterns["route_id"]),
+                "mode": feed.df_service_patterns["route_type"],
                 "service_pattern_id_original": service_pattern_ids_original,
                 "service_pattern_id_unique": self._transform_service_pattern_ids(
                     feed_id, feed.df_service_patterns["service_pattern_id"]
@@ -141,6 +142,22 @@ class TransitNetwork:
         self.feeds[feed_id] = feed
         print(f"Feed {feed_id} added")
 
+    def _get_overlap_headways_frequencies_for_all_periods(self, percentile, periods):
+        return self._get_headways_frequencies(percentile, periods, self._get_overlap_headways)
+
+    def _get_headways_frequencies(self, percentile, periods, headway_function):
+        new_columns = {}
+        for period in periods:
+            period_length = dt.datetime(dt.data.today(), period["end"]) - dt.datetime(dt.data.today(), period["start"])
+            df_stop_times_in_period = self._get_stop_times_for_time_period(
+                period["start"], period["end"]
+            )
+            headways, frequencies = headway_function(
+                df_stop_times_in_period, percentile, period_length
+            )
+            new_columns[f"headway_{period['name']}"] = headways
+            new_columns[f"frequencies_{period['name']}"] = frequencies
+        return pd.DataFrame(new_columns)
 
     def create_route_graph(self):    
         df_stop_graph = self.df_stop_times.sort_values(
@@ -195,6 +212,14 @@ class TransitNetwork:
         )["overlapping_service_patterns"].cumcount().astype(str)
         self.df_stop_graph = df_stop_graph.copy()
         self.df_overlapping_service_patterns = df_merged_overlaps_exploded.set_index("overlap_id")
+
+    @staticmethod
+    def _get_headway_combination_string(headways):
+        raise NotImplementedError
+
+    def _get_stop_classifications(self, overlap_headways):
+        raise NotImplementedError()
+        return pd.Series("trunk", index=self.gdf_processed_stops.index)
 
     def _get_stop_times_for_time_period(self, start_time: dt.time, end_time: dt.time):
         start_time_seconds = time_to_int(start_time)

@@ -150,8 +150,7 @@ class FeedWrapper:
         )
         return df_trips.copy()
 
-    @staticmethod
-    def _get_service_pattern_df(df_trips_with_stop_tuple, min_combination_count):
+    def _get_service_pattern_df(self, df_trips_with_stop_tuple, min_combination_count):
         service_pattern_counts = df_trips_with_stop_tuple["stop_tuple"].value_counts()
         df_service_patterns = df_trips_with_stop_tuple[["route_id", "stop_tuple"]].drop_duplicates()
         df_service_patterns_filtered = df_service_patterns.set_index("stop_tuple").loc[
@@ -163,7 +162,16 @@ class FeedWrapper:
         ] = df_service_patterns_filtered.groupby("route_id")["temp_count"].cumcount().astype(str)
         df_service_patterns_filtered.drop("temp_count", axis=1, inplace=True)
         df_service_patterns_filtered["service_pattern_id"] = df_service_patterns_filtered["route_id"] + "_" + df_service_patterns_filtered["service_pattern_id_no_route"]
-        return df_service_patterns_filtered
+        df_service_patterns_with_mode = df_service_patterns_filtered.merge(
+            self.df_routes["route_type"].map(
+                GTFS_ROUTE_TYPE_TO_ID_MAP
+            ),
+            how="left",
+            left_on="route_id",
+            right_index=True,
+            validate="many_to_one"
+        )
+        return df_service_patterns_with_mode
 
     @staticmethod
     def _get_trips_by_service_pattern_id(df_trips_with_stop_tuple, df_service_patterns):
