@@ -1,6 +1,7 @@
 import hashlib
 import pathlib
 import subprocess
+from typing import Iterable
 import folium
 import pandas as pd
 from pyproj import Transformer, Geod
@@ -11,6 +12,7 @@ import datetime as dt
 from playwright.async_api import async_playwright, Playwright, Error, TimeoutError
 import zipfile
 import geopandas as gpd
+from scipy.stats import percentileofscore
 
 from MobilityHubDataObjects import SpatialDataObject
 
@@ -243,3 +245,12 @@ def overlap_and_weight_values(gdf_keep_geometry, gdf_keep_data, keep_columns, lo
         geometry=gdf_keep_geometry.sort_index().geometry
     )
     return gdf_inferred_values
+
+#TODO: move to utils.py
+def get_quantile_ranking_series(s: pd.Series) -> pd.Series:
+    dropped = s.dropna()
+    return pd.Series(
+        get_quantile_ranking(dropped), index=dropped.index
+    ).reindex(s.index)
+def get_quantile_ranking(a: Iterable[float | int]) -> np.array:
+    return [percentileofscore(a, i, kind="mean") / 100 for i in a]

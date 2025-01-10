@@ -15,7 +15,7 @@ class FeedWrapper:
     # Public
     feed_loaded = False
     service_loaded = False
-    gdf_stops = None
+    gdf_stops = None,
     
     def __init__(
             self,
@@ -23,6 +23,7 @@ class FeedWrapper:
             feed_id: str,
             filter_area,
             filter_area_crs,
+            min_trips: int
         ):
         self.path = pathlib.Path(feed_path).resolve()
         self.id = feed_id
@@ -72,7 +73,7 @@ class FeedWrapper:
 
         # Get dfs with trip patterns
         df_trips_with_stop_tuple = self._get_trips_by_stop_tuple()
-        self.df_service_patterns = self._get_service_pattern_df(df_trips_with_stop_tuple, MIN_TRIPS)
+        self.df_service_patterns = self._get_service_pattern_df(df_trips_with_stop_tuple, min_trips)
         self.df_trips = self._get_trips_by_service_pattern_id(
             df_trips_with_stop_tuple, self.df_service_patterns
         )

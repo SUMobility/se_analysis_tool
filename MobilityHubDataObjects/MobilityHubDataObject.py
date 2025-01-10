@@ -10,7 +10,7 @@ from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
 from MobilityHubDataObjects.constants import GEODESIC_CRS, HIGH_COMFORT_MODES
-from MobilityHubDataObjects.utils import basic_circle_marker, transform_shapely_geometry
+from MobilityHubDataObjects.utils import basic_circle_marker, get_quantile_ranking_series, transform_shapely_geometry
 
 USED_BASE_LAYER_METRICS = [
     SMART_LOCATION_JOB_DENSITY_NAME,
@@ -78,16 +78,6 @@ class MobilityHubDataObject(SpatialDataObject):
         raise NotImplementedError()
     def get_scores(self):
         raise NotImplementedError()
-
-
-#TODO: move to utils.py
-def get_quantile_ranking_series(s: pd.Series) -> pd.Series:
-    dropped = s.dropna()
-    return pd.Series(
-        get_quantile_ranking(dropped), index=dropped.index
-    ).reindex(s.index)
-def get_quantile_ranking(a: Iterable[float | int]) -> np.array:
-    return [percentileofscore(a, i, kind="mean") / 100 for i in a]
 
 def _generate_od_score(gdf_merged_points):
     gdf_points = gpd.GeoDataFrame(

@@ -1,4 +1,7 @@
 # General constants
+from enum import Enum
+
+
 GEODESIC_CRS = 4326
 MILES_TO_METERS_FACTOR = 1609.34
 METERS_TO_MILES_FACTOR = 1/MILES_TO_METERS_FACTOR
@@ -41,7 +44,8 @@ ROUTE_PRIORITY_MAP = {
     BUS: 9,
 }
 
-HIGH_COMFORT_MODES = [TRAM, METRO, FERRY, MONORAIL]
+HIGH_COMFORT_MODES = [TRAM, METRO, FERRY, MONORAIL, AERIAL] 
+#TODO: should funiculars be included? (this only matters for pgh I think)
 
 ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP = {
     TRAM: "Tram",
@@ -67,4 +71,22 @@ MODE_COLOR_MAP = {
     ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[FUNICULAR]: "#c47cad",
     ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[TROLLEYBUS]: "#f5c9e7",
     ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[MONORAIL]: "#c47cad"
+}
+
+class ModeClassification(Enum):
+    HIGH_COMFORT = 0
+    BUS = 1
+    OTHER = 2
+
+MODE_CLASSIFICATION_MAP = {
+    TRAM: ModeClassification.HIGH_COMFORT,
+    METRO: ModeClassification.HIGH_COMFORT,
+    RAIL: ModeClassification.HIGH_COMFORT,
+    BUS: ModeClassification.BUS,
+    FERRY: ModeClassification.HIGH_COMFORT,
+    CABLE_CAR: ModeClassification.OTHER,
+    AERIAL: ModeClassification.OTHER,
+    FUNICULAR: ModeClassification.OTHER,
+    TROLLEYBUS: ModeClassification.BUS,
+    MONORAIL: ModeClassification.HIGH_COMFORT,
 }
