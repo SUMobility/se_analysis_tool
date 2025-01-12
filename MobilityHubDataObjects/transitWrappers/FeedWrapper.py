@@ -6,8 +6,10 @@ import pandas as pd
 import geopandas as gpd
 import traceback
 
-from MobilityHubDataObjects.constants import GEODESIC_CRS, GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP
+from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP
+from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.transitWrappers.TransitNetwork import MIN_TRIPS
+from MobilityHubDataObjects.transitWrappers.constants import ROUTE_PRIORITY_MAP
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
 
 
@@ -69,17 +71,8 @@ class FeedWrapper:
                 pd.Series(self.df_routes.index, index=self.df_routes.index).dropna()
             )
         )
+        print("partridge loaded")
         self.df_routes["route_mode_key"] = self.df_routes["route_type"].map(GTFS_ROUTE_TYPE_TO_ID_MAP)
-
-        # Get dfs with trip patterns
-        df_trips_with_stop_tuple = self._get_trips_by_stop_tuple()
-        self.df_service_patterns = self._get_service_pattern_df(df_trips_with_stop_tuple, min_trips)
-        self.df_trips = self._get_trips_by_service_pattern_id(
-            df_trips_with_stop_tuple, self.df_service_patterns
-        )
-        self.df_stop_times = self._get_stop_times_with_service_pattern(
-            self.df_trips
-        )
 
         # Create stops df
         df_stops = self.feed.stops.copy()
@@ -91,8 +84,30 @@ class FeedWrapper:
         gdf_stops_in_area = gdf_stops.loc[
             gdf_stops.within(transform_shapely_geometry(filter_area_crs, GEODESIC_CRS, filter_area))
         ]
+        if gdf_stops_in_area.size == 0:
+            # No stops in area
+            self.df_trips = pd.DataFrame()
+            self.df_stop_times = pd.DataFrame()
+            self.df_routes = pd.DataFrame()
+            return
         self.gdf_stops = gdf_stops_in_area.copy().set_index("stop_id")
+        df_stop_times_filtered = self._filter_stop_times(self.feed.stop_times, self.gdf_stops.index)
+        # Get dfs with trip patterns
+        print("loading stop tuple")
+        df_trips_with_stop_tuple = self._get_trips_by_stop_tuple(df_stop_times_filtered)
+        print("loaded stop tuple")
+        self.df_service_patterns = self._get_service_pattern_df(df_trips_with_stop_tuple, min_trips)
+        self.df_trips = self._get_trips_by_service_pattern_id(
+            df_trips_with_stop_tuple, self.df_service_patterns
+        )
+        self.df_stop_times = self._merge_stop_times_service_pattern(
+            df_stop_times_filtered,
+            self.df_trips
+        )
+        print("trip patterns loaded")
+
         self.feed_loaded = True 
+        print("feed loaded")
     
     def get_agency_name(self) -> str | float:
         if not self.feed_loaded:
@@ -143,13 +158,16 @@ class FeedWrapper:
         return self.df_service_patterns.index.loc[self.df_service_patterns["route_id"] == route_id]
 
     # "Private"
-    def _get_trips_by_stop_tuple(self):
-        df_stop_times_indexed_by_trip = self.feed.stop_times.set_index("trip_id")
-        df_trips = self.feed.trips.copy()
-        df_trips["stop_tuple"] = df_trips["trip_id"].map(
+    def _get_trips_by_stop_tuple(self, df_stop_times):
+        df_stop_times_indexed_by_trip = df_stop_times.set_index("trip_id")
+        df_trips = self.feed.trips.set_index("trip_id")
+        df_trips_filtered = df_trips.loc[df_stop_times_indexed_by_trip.index.unique()]
+        df_trips_filtered["stop_tuple"] = pd.Series(
+            df_trips_filtered.index, index=df_trips_filtered.index
+        ).map( #TODO: this is probably slower than a merge and groupby
             lambda trip_id: tuple(df_stop_times_indexed_by_trip.loc[trip_id, "stop_id"].values)
         )
-        return df_trips.copy()
+        return df_trips_filtered.copy()
 
     def _get_service_pattern_df(self, df_trips_with_stop_tuple, min_combination_count):
         service_pattern_counts = df_trips_with_stop_tuple["stop_tuple"].value_counts()
@@ -176,15 +194,20 @@ class FeedWrapper:
 
     @staticmethod
     def _get_trips_by_service_pattern_id(df_trips_with_stop_tuple, df_service_patterns):
-        return df_trips_with_stop_tuple.merge(
-            df_service_patterns[["stop_tuple", "service_pattern_id"]],
+        return df_trips_with_stop_tuple.reset_index().merge(
+            df_service_patterns[["stop_tuple", "service_pattern_id", "route_id"]],
             how="left",
-            on="stop_tuple",
+            on=["stop_tuple", "route_id"],
             validate="many_to_one"
         ).drop("stop_tuple", axis=1).set_index("service_pattern_id").sort_index().copy()
 
-    def _get_stop_times_with_service_pattern(self, df_trips_with_service_patterns):
-        df_stop_times_with_service_pattern_id = self.feed.stop_times.merge(
+    def _filter_stop_times(self, df_stop_times, stop_ids_to_keep):
+        return df_stop_times.set_index("stop_id").loc[stop_ids_to_keep].reset_index().copy()
+
+    @staticmethod
+    def _merge_stop_times_service_pattern(df_stop_times, df_trips_with_service_patterns):
+        print(df_trips_with_service_patterns)
+        df_stop_times_with_service_pattern_id = df_stop_times.merge(
             df_trips_with_service_patterns.reset_index()[
                 ["trip_id", "service_pattern_id"]
             ],

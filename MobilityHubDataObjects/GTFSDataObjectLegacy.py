@@ -11,11 +11,13 @@ import geopandas as gpd
 import pathlib
 from urllib.parse import urlparse
 
+from MobilityHubDataObjects.transitWrappers.constants import MODE_COLOR_MAP
 from MobilityHubDataObjects.GTFSFeedWrapperLegacy import GTFSFeedWrapperLegacy
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
+from MobilityHubDataObjects.transitWrappers.constants import ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, download_latest_feed_version_from_transitland, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
-from MobilityHubDataObjects.constants import GEODESIC_CRS, MODE_COLOR_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
+from MobilityHubDataObjects.constants import GEODESIC_CRS
 
 GTFS_FEEDS_FIELDS_TO_STORE = [
     "name",

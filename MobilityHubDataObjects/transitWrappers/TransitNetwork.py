@@ -7,8 +7,10 @@ import datetime as dt
 import geopandas as gpd
 import pandas as pd
 from scipy.stats import percentileofscore
-from MobilityHubDataObjects.constants import GTFS_ROUTE_TYPE_TO_ID_MAP, HIGH_COMFORT_MODES, MODE_CLASSIFICATION_MAP, ModeClassification
+from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP
+from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.transitWrappers import FeedWrapper
+from MobilityHubDataObjects.transitWrappers.constants import HIGH_COMFORT_MODES, MODE_CLASSIFICATION_MAP, ModeClassification
 from MobilityHubDataObjects.utils import get_quantile_ranking_series, safe_is_na, time_to_int
 
 CONFIG_MORNING_PEAK_START = "morning_peak_start"
@@ -92,6 +94,7 @@ class TransitNetwork:
         self.config = config_to_use
         self.local_crs = local_crs
         # Define periods from config
+        #TODO: make this more configurable, period times and whether they are "peak" should be configurable
         self.morning_peak = Period(
             PERIOD_MORNING_PEAK_NAME, self.config[CONFIG_MORNING_PEAK_START], self.config[CONFIG_MORNING_PEAK_END]
         )
@@ -101,9 +104,15 @@ class TransitNetwork:
         self.off_peak = Period(
             PERIOD_OFF_PEAK_NAME, self.config[CONFIG_OFF_PEAK_START], self.config[CONFIG_OFF_PEAK_END]
         )
+        self.periods = (self.morning_peak, self.evening_peak, self.off_peak)
         for feed in feeds:
             self.add_feed(feed)
-        self.graph_generated = False
+        self._graph_generated = False
+        self._overlap_groups_generated = False
+        self._route_groups_generated = False
+        self.min_trips = self.config[CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY]
+        self.peak_weight = self.config[CONFIG_PEAK_WEIGHT]
+        self.percentile = self.config[CONFIG_HEADWAY_PERCENTILE]
 
     def add_feed(self, feed: FeedWrapper):
         assert feed.feed_loaded
@@ -177,10 +186,11 @@ class TransitNetwork:
             "departure_time": feed.df_stop_times["departure_time"],
             "stop_sequence": feed.df_stop_times["stop_sequence"],
         }).dropna(subset=["service_pattern_id_unique"])
-        self.gdf_stops = pd.concat(
+        df_stops = pd.concat(
             [self.gdf_stops.reset_index(drop=False), gdf_new_network_stops],
             ignore_index=True
         ).set_index("stop_id_unique").drop("index", axis=1, errors="ignore")
+        self.gdf_stops = gpd.GeoDataFrame(df_stops, geometry="geometry")
         self.df_routes = pd.concat(
             [self.df_routes.reset_index(drop=False), df_routes],
             ignore_index=True
@@ -194,46 +204,59 @@ class TransitNetwork:
             ignore_index=True
         ).set_index(["stop_id_unique", "trip_id_unique"]).drop("index", axis=1, errors="ignore")
         self.feeds[feed_id] = feed
-        self.graph_generated = False
+        self._reset_graph_status()
         print(f"Feed {feed_id} added")
 
-    def get_summary_overlaps_df(self):
-        self._create_route_graph_lazily()
-        percentile = self.config[CONFIG_HEADWAY_PERCENTILE]
-        min_trips = self.config[CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY]
-        peak_weight = self.config[CONFIG_PEAK_WEIGHT]
-        
-        periods = (self.morning_peak, self.evening_peak, self.off_peak)
-        overlaps_groups = [
-            self._get_stop_times_grouped_by_service_overlaps(period, min_trips) for period in periods
-        ]
-        headway_group_function = lambda group: self._get_headways_for_group_helper(group, percentile)
-        # TODO: use a list comprehension here
+    def get_headways_by_stop_overlap(self):
+        headway_group_function = lambda group: self._get_headways_for_group_helper(
+            group, self.percentile
+        )
+        overlap_groups = self._get_overlap_groups_lazily()
+        df_overlap_headways = self._get_values_from_groups(
+            overlap_groups,
+            [period.name for period in self.periods],
+            headway_group_function
+        )
+        weighted_headways = self._get_weighted_value(
+            df_overlap_headways, 
+            [self.morning_peak.name, self.evening_peak.name],
+            self.off_peak.name,
+            self.peak_weight,
+            max=False
+        ).rename("weighted_headway")
+        return weighted_headways
+
+    def get_frequencies_by_stop_overlap(self):
         frequency_group_functions = [
             lambda group: self._get_frequencies_for_group_helper(group, self.morning_peak),
             lambda group: self._get_frequencies_for_group_helper(group, self.evening_peak),
             lambda group: self._get_frequencies_for_group_helper(group, self.off_peak),
 
         ]
-        df_overlap_headways = self._get_values_from_groups(
-            overlaps_groups,
-            [period.name for period in periods],
-            headway_group_function
-        )
-        df_overlap_frequencies = self._get_values_from_groups(
-            overlaps_groups,
-            [period.name for period in periods],
+        overlap_groups = self._get_overlap_groups_lazily()
+        df_frequencies = self._get_values_from_groups(
+            overlap_groups,
+            [period.name for period in self.periods],
             frequency_group_functions
         )
-        df_overlap_summary = pd.concat([
-            self._get_weighted_value(
-                df_overlap_headways, [self.morning_peak.name, self.evening_peak.name], self.off_peak.name, peak_weight, max=False
-            ).rename("weighted_headway"),
-            self._get_weighted_value(
-                df_overlap_frequencies, [self.morning_peak.name, self.evening_peak.name], self.off_peak.name, peak_weight
-            ).rename("weighted_frequency"),
-        ], axis=1)
-        return df_overlap_summary
+        weighted_frequencies = self._get_weighted_value(
+            df_frequencies,
+            [self.morning_peak.name, self.evening_peak.name],
+            self.off_peak.name, 
+            self.peak_weight
+        ).rename("weighted_frequency")
+        return weighted_frequencies
+
+    def _get_overlap_groups_lazily(self):
+        self._create_route_graph_lazily()
+        if not self._overlap_groups_generated:
+            self.overlap_groups = [
+                self._get_stop_times_grouped_by_service_overlaps(
+                    period, self.min_trips
+                ) for period in self.periods
+            ]
+            self._overlap_groups_generated = True
+        return self.overlap_groups
 
     def get_summary_routes_df(self):
         self._create_route_graph_lazily()
@@ -289,6 +312,17 @@ class TransitNetwork:
         self._create_route_graph_lazily()
         group_in_period = self._get_stop_times_grouped_by_service_overlaps(period, min_trips)
         return self._get_frequencies_for_group_helper(group_in_period, period)
+
+    def get_transfer_status(self):
+        self._create_route_graph_lazily()
+        is_transfer = (
+            (self.df_stop_graph.groupby("stop_id_unique")["next_stop"].nunique(dropna=True) > 1)
+            | self.df_stop_graph.groupby("stop_id_unique")[["next_stop", "previous_stop"]].any().any(axis=1)
+        )
+        return is_transfer
+    
+    def get_mode_classification(self): #TODO: just make this the whole _get_mode_for_stop_ids function
+        return self._get_mode_classification_for_stop_ids(self.gdf_stops.index.to_numpy())
 
     @staticmethod
     def _get_weighted_value(df, peak_names, off_peak_name, peak_weight, max=True):
@@ -406,17 +440,18 @@ class TransitNetwork:
         )["overlapping_service_patterns"].cumcount().astype(str)
         self.df_stop_graph = df_stop_graph.copy()
         self.df_overlapping_service_patterns = df_merged_overlaps_exploded.set_index("overlap_id")
+        self._graph_generated = True
 
     def _create_route_graph_lazily(self):
-        if self.graph_generated:
-            return
-        else:
+        if not self._graph_generated:
             self._create_route_graph()
 
     @staticmethod
     def _get_headway_combination_string(headways):
         raise NotImplementedError
-    
+
+
+    #TODO: refactor this to mobilityHubDataObjects
     def _get_stop_classifications(
             self,
             gdf_stops_with_mode,
@@ -492,7 +527,7 @@ class TransitNetwork:
         )
         return gdf_stops_with_classification
 
-    def _get_mode_for_stop_ids(self, stop_ids: np.ndarray):
+    def _get_mode_classification_for_stop_ids(self, stop_ids: np.ndarray):
         stop_ids_with_service_patterns = stop_ids[
             np.isin(stop_ids, self.df_stop_times.index.get_level_values("stop_id_unique"))
         ]
@@ -599,6 +634,11 @@ class TransitNetwork:
             base_id = f"{feed_id}_{route_id}_{route_id_suffix}"
             out.append(base_id)
         return out
+
+    def _reset_graph_status(self):
+        self._graph_generated = False
+        self._route_groups_generated = False
+        self._overlap_groups_generated = False
 
     @staticmethod
     def _transform_service_pattern_ids(feed_id, service_pattern_ids):

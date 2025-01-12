@@ -1,5 +1,5 @@
 import numpy as np
-from MobilityHubDataObjects.constants import HIGH_COMFORT_MODES
+from MobilityHubDataObjects.transitWrappers.constants import HIGH_COMFORT_MODES
 from MobilityHubDataObjects.utils import safe_is_na
 from typing import Callable
 

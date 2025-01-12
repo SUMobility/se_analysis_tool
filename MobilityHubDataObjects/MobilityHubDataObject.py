@@ -9,7 +9,8 @@ from MobilityHubDataObjects import BaseLayer, GTFSDataObjectLegacy, SpatialDataO
 from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
-from MobilityHubDataObjects.constants import GEODESIC_CRS, HIGH_COMFORT_MODES
+from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.transitWrappers.constants import HIGH_COMFORT_MODES
 from MobilityHubDataObjects.utils import basic_circle_marker, get_quantile_ranking_series, transform_shapely_geometry
 
 USED_BASE_LAYER_METRICS = [
