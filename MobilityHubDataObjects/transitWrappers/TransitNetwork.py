@@ -7,7 +7,7 @@ import datetime as dt
 import geopandas as gpd
 import pandas as pd
 from scipy.stats import percentileofscore
-from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP
+from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.transitWrappers import FeedWrapper
 from MobilityHubDataObjects.transitWrappers.constants import HIGH_COMFORT_MODES, MODE_CLASSIFICATION_MAP, ModeClassification
@@ -86,13 +86,12 @@ class TransitNetwork:
     df_stop_times = pd.DataFrame()
     df_service_patterns = pd.DataFrame()
 
-    def __init__ (self, feeds: Iterable[FeedWrapper], local_crs: int, config={}):
+    def __init__ (self, feeds: Iterable[FeedWrapper]=[], config={}):
         config_to_use = dict(config)
         for key in DEFAULT_FEED_CONFIG:
             if key not in config:
                 config_to_use[key] = DEFAULT_FEED_CONFIG[key]
         self.config = config_to_use
-        self.local_crs = local_crs
         # Define periods from config
         #TODO: make this more configurable, period times and whether they are "peak" should be configurable
         self.morning_peak = Period(
@@ -127,7 +126,7 @@ class TransitNetwork:
             self._transform_stop_ids(feed_id, gdf_feed_stops.index.values),
             index=gdf_feed_stops.index
         )
-        stop_geometries = feed.gdf_stops.geometry.to_crs(self.local_crs)
+        stop_geometries = feed.gdf_stops.geometry.to_crs(GEODESIC_CRS)
         gdf_new_network_stops = gpd.GeoDataFrame(
             {
                 "feed": feed_id,
@@ -317,12 +316,44 @@ class TransitNetwork:
         self._create_route_graph_lazily()
         is_transfer = (
             (self.df_stop_graph.groupby("stop_id_unique")["next_stop"].nunique(dropna=True) > 1)
-            | self.df_stop_graph.groupby("stop_id_unique")[["next_stop", "previous_stop"]].any().any(axis=1)
-        )
+            | self.df_stop_graph.groupby("stop_id_unique")[["last_stop", "first_stop"]].any().any(axis=1)
+        ).fillna(False)
         return is_transfer
     
+    def get_mode(self):
+        stop_ids_with_service_patterns = self.df_stop_times.index.get_level_values(
+            "stop_id_unique"
+        ).drop_duplicates()
+        service_patterns_by_stop_id = self.df_stop_times.droplevel(1).loc[
+            stop_ids_with_service_patterns, "service_pattern_id_unique"
+        ]
+        modes_by_stop_id = self.df_service_patterns.loc[service_patterns_by_stop_id.values, "mode"]
+        modes_by_stop_id.index = service_patterns_by_stop_id.index
+        modes_by_stop_id_sorted = modes_by_stop_id.sort_values(
+            key=(lambda mode_series: mode_series.map(ROUTE_PRIORITY_MAP))
+        )
+        primary_mode_by_stop = modes_by_stop_id_sorted.loc[~modes_by_stop_id_sorted.index.duplicated(keep="first")].copy()
+        return primary_mode_by_stop
+
     def get_mode_classification(self): #TODO: just make this the whole _get_mode_for_stop_ids function
-        return self._get_mode_classification_for_stop_ids(self.gdf_stops.index.to_numpy())
+        stop_ids_with_service_patterns = self.df_stop_times.index.get_level_values(
+            "stop_id_unique"
+        ).drop_duplicates()
+        service_patterns_by_stop_id = self.df_stop_times.droplevel(1).loc[
+            stop_ids_with_service_patterns, "service_pattern_id_unique"
+        ]
+        modes_by_stop_id = self.df_service_patterns.loc[service_patterns_by_stop_id.values, "mode"]
+        modes_by_stop_id.index = service_patterns_by_stop_id.index
+        mode_classification_by_stop_id = modes_by_stop_id.map(MODE_CLASSIFICATION_MAP)
+        primary_mode_classification_by_stop_id = mode_classification_by_stop_id.sort_values(
+            key=lambda mode_series: mode_series.map({
+                ModeClassification.HIGH_COMFORT: 0,
+                ModeClassification.BUS: 1,
+                ModeClassification.OTHER: 2
+            }),
+            ascending=True
+        ).groupby(level=0).first()
+        return primary_mode_classification_by_stop_id.reindex(self.gdf_stops.index).copy()
 
     @staticmethod
     def _get_weighted_value(df, peak_names, off_peak_name, peak_weight, max=True):
@@ -369,6 +400,9 @@ class TransitNetwork:
         service_pattern_stop_groupby = df_stop_graph.groupby("service_pattern_id_unique")["stop_id_unique"]
         df_stop_graph["next_stop"] = service_pattern_stop_groupby.shift(periods=-1)
         df_stop_graph["previous_stop"] = service_pattern_stop_groupby.shift(periods=1)
+        # Mark stops as first or last stop, needed to get transfers
+        df_stop_graph["last_stop"] = df_stop_graph["next_stop"].isna()
+        df_stop_graph["first_stop"] = df_stop_graph["previous_stop"].isna()
         # Get a reference to the service patterns at the next and previous stops
         for stop_id_column, new_column_name in (
             ("stop_id_unique", "service_pattern_ids_at_current_stop"),
@@ -526,26 +560,6 @@ class TransitNetwork:
             )
         )
         return gdf_stops_with_classification
-
-    def _get_mode_classification_for_stop_ids(self, stop_ids: np.ndarray):
-        stop_ids_with_service_patterns = stop_ids[
-            np.isin(stop_ids, self.df_stop_times.index.get_level_values("stop_id_unique"))
-        ]
-        service_patterns_by_stop_id = self.df_stop_times.droplevel(1).loc[
-            stop_ids_with_service_patterns, "service_pattern_id_unique"
-        ]
-        modes_by_stop_id = self.df_service_patterns.loc[service_patterns_by_stop_id.values, "mode"]
-        modes_by_stop_id.index = service_patterns_by_stop_id.index
-        mode_classification_by_stop_id = modes_by_stop_id.map(MODE_CLASSIFICATION_MAP)
-        primary_mode_classification_by_stop_id = mode_classification_by_stop_id.sort_values(
-            key=lambda mode_series: mode_series.map({
-                ModeClassification.HIGH_COMFORT: 0,
-                ModeClassification.BUS: 1,
-                ModeClassification.OTHER: 2
-            }),
-            ascending=True
-        ).groupby(level=0).first()
-        return primary_mode_classification_by_stop_id.reindex(stop_ids).copy()
 
     def _get_stop_times_for_time_period(self, start_time: dt.time, end_time: dt.time):
         start_time_seconds = time_to_int(start_time)

@@ -1,84 +1,86 @@
 from enum import Enum
 
+NO_MODE = "NA"
+
 class ModeClassification(Enum) :
     HIGH_COMFORT = 0
     BUS = 1
     OTHER = 2
 
-# GTFS Constants
-TRAM = "TRAM"
-METRO = "METRO"
-RAIL = "RAIL"
-BUS = "BUS"
-FERRY = "FERRY"
-CABLE_CAR = "CABLE_CAR"
-AERIAL = "AERIAL"
-FUNICULAR = "FUNICULAR"
-TROLLEYBUS = "TROLLEYBUS"
-MONORAIL = "MONORAIL"
+class Mode(Enum):
+    TRAM = "Tram"
+    METRO = "Metro"
+    RAIL = "Rail"
+    BUS = "Bus"
+    FERRY = "Ferry"
+    CABLE_CAR = "Surface Cable Car"
+    AERIAL = "Aerial Transit"
+    FUNICULAR = "Funicular"
+    TROLLEYBUS = "Trolleybus"
+    MONORAIL = "Monorail"
 
 MODE_CLASSIFICATION_MAP = {
-    TRAM: ModeClassification.HIGH_COMFORT,
-    METRO: ModeClassification.HIGH_COMFORT,
-    RAIL: ModeClassification.HIGH_COMFORT,
-    BUS: ModeClassification.BUS,
-    FERRY: ModeClassification.HIGH_COMFORT,
-    CABLE_CAR: ModeClassification.OTHER,
-    AERIAL: ModeClassification.OTHER,
-    FUNICULAR: ModeClassification.OTHER,
-    TROLLEYBUS: ModeClassification.BUS,
-    MONORAIL: ModeClassification.HIGH_COMFORT,
+    Mode.TRAM: ModeClassification.HIGH_COMFORT,
+    Mode.METRO: ModeClassification.HIGH_COMFORT,
+    Mode.RAIL: ModeClassification.HIGH_COMFORT,
+    Mode.BUS: ModeClassification.BUS,
+    Mode.FERRY: ModeClassification.HIGH_COMFORT,
+    Mode.CABLE_CAR: ModeClassification.OTHER,
+    Mode.AERIAL: ModeClassification.OTHER,
+    Mode.FUNICULAR: ModeClassification.OTHER,
+    Mode.TROLLEYBUS: ModeClassification.BUS,
+    Mode.MONORAIL: ModeClassification.HIGH_COMFORT,
 }
 
-HIGH_COMFORT_MODES = [TRAM, METRO, FERRY, MONORAIL, AERIAL]
+HIGH_COMFORT_MODES = [Mode.TRAM, Mode.METRO, Mode.FERRY, Mode.MONORAIL, Mode.AERIAL]
 
 ROUTE_PRIORITY_MAP = {
-    RAIL: 0,
-    METRO: 1,
-    FERRY: 2,
-    MONORAIL: 3,
-    FUNICULAR: 4,
-    AERIAL: 5,
-    CABLE_CAR: 6,
-    TRAM: 7,
-    TROLLEYBUS: 8,
-    BUS: 9,
+    Mode.RAIL: 0,
+    Mode.METRO: 1,
+    Mode.FERRY: 2,
+    Mode.MONORAIL: 3,
+    Mode.FUNICULAR: 4,
+    Mode.AERIAL: 5,
+    Mode.CABLE_CAR: 6,
+    Mode.TRAM: 7,
+    Mode.TROLLEYBUS: 8,
+    Mode.BUS: 9,
 }
 #TODO: should funiculars be included? (this only matters for pgh I think)
 
 ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP = {
-    TRAM: "Tram",
-    METRO: "Metro",
-    RAIL: "Rail",
-    BUS: "Bus",
-    FERRY: "Ferry",
-    CABLE_CAR: "Surface Cable Car",
-    AERIAL: "Aerial Transit",
-    FUNICULAR: "Funicular",
-    TROLLEYBUS: "Trolleybus",
-    MONORAIL: "Monorail",
+    Mode.TRAM: "Tram",
+    Mode.METRO: "Metro",
+    Mode.RAIL: "Rail",
+    Mode.BUS: "Bus",
+    Mode.FERRY: "Ferry",
+    Mode.CABLE_CAR: "Surface Cable Car",
+    Mode.AERIAL: "Aerial Transit",
+    Mode.FUNICULAR: "Funicular",
+    Mode.TROLLEYBUS: "Trolleybus",
+    Mode.MONORAIL: "Monorail",
 }
 MODE_COLOR_MAP = {
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[TRAM]: "#faa0dd",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[METRO]: "#f779cf",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[RAIL]: "#fa5cc7",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[BUS]: "#f5c9e7",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[FERRY]: "#c47cad",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[CABLE_CAR]: "#c47cad",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[AERIAL]: "#c47cad",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[FUNICULAR]: "#c47cad",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[TROLLEYBUS]: "#f5c9e7",
-    ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[MONORAIL]: "#c47cad"
+    Mode.TRAM: "#faa0dd",
+    Mode.METRO: "#f779cf",
+    Mode.RAIL: "#fa5cc7",
+    Mode.BUS: "#f5c9e7",
+    Mode.FERRY: "#c47cad",
+    Mode.CABLE_CAR: "#c47cad",
+    Mode.AERIAL: "#c47cad",
+    Mode.FUNICULAR: "#c47cad",
+    Mode.TROLLEYBUS: "#f5c9e7",
+    Mode.MONORAIL: "#c47cad"
 }
 GTFS_ROUTE_TYPE_TO_ID_MAP = {
-    0: TRAM,
-    1: METRO,
-    2: RAIL,
-    3: BUS,
-    4: FERRY,
-    5: CABLE_CAR,
-    6: AERIAL,
-    7: FUNICULAR,
-    11: TROLLEYBUS,
-    12: MONORAIL,
+    0: Mode.TRAM,
+    1: Mode.METRO,
+    2: Mode.RAIL,
+    3: Mode.BUS,
+    4: Mode.FERRY,
+    5: Mode.CABLE_CAR,
+    6: Mode.AERIAL,
+    7: Mode.FUNICULAR,
+    11: Mode.TROLLEYBUS,
+    12: Mode.MONORAIL,
 }

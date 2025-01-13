@@ -110,17 +110,22 @@ class FeedWrapper:
         print("feed loaded")
     
     def get_agency_name(self) -> str | float:
+        #TODO: need to make agency name a route field not an overall field
         if not self.feed_loaded:
             return self._print_feed_not_loaded_error()
-        if len(self.feed.agency.agency_name == 0):
+        if self.feed.agency.index.size == 1:
             return self.feed.agency.agency_name.iloc[0]
         else:
             return "Agency has Multiple Names"
     
     def get_agency_url(self) -> str:
+        #TODO: need to make agency name a route field not an overall field
         if not self.feed_loaded:
             return self._print_feed_not_loaded_error()
-        return self.feed.agency.agency_url
+        if self.feed.agency.index.size == 1:
+            return self.feed.agency.agency_url.iloc[0]
+        else:
+            return "Agency has multiple URLs"
 
     def get_last_valid_date(self):
         #TODO: implement
@@ -206,7 +211,6 @@ class FeedWrapper:
 
     @staticmethod
     def _merge_stop_times_service_pattern(df_stop_times, df_trips_with_service_patterns):
-        print(df_trips_with_service_patterns)
         df_stop_times_with_service_pattern_id = df_stop_times.merge(
             df_trips_with_service_patterns.reset_index()[
                 ["trip_id", "service_pattern_id"]

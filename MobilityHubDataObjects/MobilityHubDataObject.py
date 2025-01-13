@@ -5,7 +5,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 import shapely
-from MobilityHubDataObjects import BaseLayer, GTFSDataObjectLegacy, SpatialDataObject
+from MobilityHubDataObjects import BaseLayer, SpatialDataObject
 from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
@@ -27,7 +27,7 @@ OUTPUT_COLUMNS = ["od_type", "trunk_branch_type", "stop_score", "od_score", "inv
 OUTPUT_NAMES = ["Is Destination?", "Is Trunk?", "Point Score", "OD Score", "Investment Score", "Mode", "Headway", "Best Headway"]
 
 class MobilityHubDataObject(SpatialDataObject):
-    def __init__(self, transit_stop_data_object: GTFSDataObjectLegacy, base_layer: BaseLayer, local_crs):
+    def __init__(self, transit_stop_data_object, base_layer: BaseLayer, local_crs):
         self.transit_stop_data_object = transit_stop_data_object
         self.base_layer = base_layer
         self.local_crs = local_crs

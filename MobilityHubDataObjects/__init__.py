@@ -2,9 +2,7 @@ from .FTAFacilityInventoryDataObject import *
 from .OSMBikeParkingDataObject import *
 from .SpatialDataObject import *
 from .AFDCApiDataObject import *
-from .GTFSDataObjectLegacy import *
 from .constants import *
-from .GTFSFeedWrapperLegacy import *
 from .CityBikesDataObject import *
 from .scoreFunctions import *
 from .ScoreWrapper import *
@@ -16,9 +14,7 @@ from .transitWrappers import *
 __all__ = [
     "AFDCApiDataObject",
     "SpatialDataObject",
-    "GTFSFeedWrapperLegacy",
     "FTAFacilityInventoryDataObject",
-    "GTFSDataObjectLegacy",
     "OSMBikeParkingDataObject",
     "CityBikesDataObject",
     "ScoreWrapper",
