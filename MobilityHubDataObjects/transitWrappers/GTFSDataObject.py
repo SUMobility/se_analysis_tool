@@ -5,6 +5,7 @@ import typing
 import fiona
 import folium
 import numpy as np
+import pytz
 import requests
 import shapely
 from MobilityHubDataObjects import SpatialDataObject
@@ -12,15 +13,10 @@ import datetime as dt
 import pandas as pd
 import geopandas as gpd
 import pathlib
-from urllib.parse import urlparse
 
-from MobilityHubDataObjects.transitWrappers.constants import MODE_COLOR_MAP
-from MobilityHubDataObjects.GTFSFeedWrapperLegacy import GTFSFeedWrapperLegacy
-from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
-from MobilityHubDataObjects.scoreFunctions import get_score_constant_value, score_transit_stops
+from MobilityHubDataObjects.transitWrappers.constants import MODE_COLOR_MAP, NO_MODE, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP, Mode, ModeClassification
 from MobilityHubDataObjects.transitWrappers import TransitNetwork
 from MobilityHubDataObjects.transitWrappers.FeedWrapper import FeedWrapper
-from MobilityHubDataObjects.transitWrappers.constants import ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, download_latest_feed_version_from_transitland, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 
@@ -39,19 +35,22 @@ GTFS_FEEDS_FIELDS_TO_STORE = [
     "last_fetch_succeeded",
 ]
 GTFS_STOPS_FIELDS_TO_DISPLAY = [
-    "agency_id",
-    "agency_name",
-    "stop_id",
-    "stop_name",
-    "primary_mode_display",
-    "pretty_printed_headway",
-    "score",
+    "feed",
+    #"agency_name",
+    "stop_id_unique",
+    #"stop_name",
+    "min_overlap_headway",
+    "total_frequency",
+    "transfer",
+    "mode",
+    "mode_classification",
+    #"pretty_printed_headway",
 ]
 GTFS_FIELDS_TO_KEEP = [
     *GTFS_STOPS_FIELDS_TO_DISPLAY,
 
 ]
-GTFS_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
+#GTFS_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
 
 @dataclass
 class DownloadResponse:
@@ -75,9 +74,12 @@ class GTFSDataObject(SpatialDataObject):
         gtfs_cache_path: str | pathlib.Path,
         transitland_url: str,
         api_key_path: str,
+        gtfs_cache_life: dt.timedelta = dt.timedelta(days=7),
         gtfs_override_feeds_path: None | str | pathlib.Path = None,
         download_transitland_first: bool = True,
-        network_config: dict = {}
+        network_config: dict = {},
+        load_from_cache: bool = True,
+        save_to_cache:bool = True,
     ) -> None:
         self.local_crs = local_crs
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
@@ -86,12 +88,15 @@ class GTFSDataObject(SpatialDataObject):
         else:
             self.gtfs_override_feeds_path = None
         self.transitland_url = transitland_url
+        self.gtfs_cache_life = gtfs_cache_life
         #TODO: add api calls to download gtfs files
         self.all_gtfs_paths = None
         self.transitland_last_queried = None
         with open(api_key_path) as f:
             self.api_key = f.read()
         self.download_transitland_first = download_transitland_first
+        self.load_from_cache = load_from_cache
+        self.save_to_cache = save_to_cache
         self.network_config = network_config
 
     async def load_data(
@@ -99,6 +104,7 @@ class GTFSDataObject(SpatialDataObject):
         load_area: (shapely.MultiPolygon | shapely.Polygon),
         load_area_crs: int
     ) -> None:
+        pd.set_option('future.no_silent_downcasting', True)
         load_area_transformed = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
         # Query Transitland
         transitland_feeds = self._recursively_make_transitland_call(
@@ -123,26 +129,47 @@ class GTFSDataObject(SpatialDataObject):
             df_feeds_metadata = pd.DataFrame(
                 columns=GTFS_FEEDS_FIELDS_TO_STORE,
             )
-        network = TransitNetwork([], self.local_crs, config=self.network_config)
-        for feed in transitland_feeds:
-            feed_id = feed["onestop_id"]
+        df_feeds_metadata["last_fetched"] = pd.to_datetime(df_feeds_metadata["last_fetched"])
+        datetime_today = dt.datetime.now()
+
+        # Check whether the cache is up to date
+        get_from_cache = (
+            self.load_from_cache
+            and df_feeds_metadata.size != 0
+            and self.gtfs_cache_life > (datetime_today - df_feeds_metadata["last_fetched"].min(skipna=True))
+        )
+        if get_from_cache:
+            self._network = None
+            gdf_stops_raw = gpd.read_file(stops_geometry_path)
+            self.gdf = self._convert_from_geojson(gdf_stops_raw)
+            self._set_is_loaded()
+            return
+
+        network = TransitNetwork(config=self.network_config)
+        for feed_metadata in transitland_feeds:
+            feed_id = feed_metadata["onestop_id"]
             print(f"INFO: Processing {feed_id}")
             # Get the most recent currently valid feed
-            current_feed_version = feed["feed_state"]["feed_version"]
+            current_feed_version = feed_metadata["feed_state"]["feed_version"]
             if not current_feed_version:
                 df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
                 continue 
-            # The current feed is already in the cache, so we may not need to download a new file
-            cached_feed_metadata = df_feeds_metadata.loc[feed_id]
-            cached_last_downloaded = dt.datetime.fromisoformat(cached_feed_metadata["last_fetched"])
-            #cached_end_of_life = dt.datetime.fromisoformat(cached_feed_metadata["last_valid_date"])
-            cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
-            assert not safe_is_na(cached_last_downloaded) and not safe_is_na(cached_fetch_status)
+            response = None
+            cached_fetch_status = False
+            # Check whether there is always a valid file downloaded
+            if feed_id in df_feeds_metadata.index:
+                cached_feed_metadata = df_feeds_metadata.loc[feed_id]
+                cached_last_downloaded = cached_feed_metadata["last_fetched"]
+                cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
+            if self.load_from_cache and cached_fetch_status and (datetime_today - cached_last_downloaded > self.gtfs_cache_life):
+                response = (True, df_feeds_metadata.loc["raw_feed_path"], df_feeds_metadata.loc["sha1_hash"])
+            else:
             # Download the feed and update the feed metadata
-            feed_url = current_feed_version["url"]
-            response = await self._download_feed(feed_id, feed_url, df_override_feeds)
-            if not response.response_success:
-                continue
+                feed_url = current_feed_version["url"]
+                response = await self._download_feed(feed_id, feed_url, df_override_feeds)
+                if not response.response_success:
+                    print(f"WARN: Download for {feed_id} failed")
+                    continue
             # Validate the hash, but do not fail (hashes will not match if transitland hasn't cached the feed recently)
             feed_output_path = response.output_path
             if (
@@ -150,15 +177,15 @@ class GTFSDataObject(SpatialDataObject):
                 and response.sha1_hash.hexdigest() != current_feed_version["sha1"]
             ):
                 print(
-                    f"WARN: For {feed['onestop_id']}, the hash {response.sha1_hash.hexdigest()} does not match the provided hash from Transitland {current_feed_version['sha1']}"
+                    f"WARN: For {feed_metadata['onestop_id']}, the hash {response.sha1_hash.hexdigest()} does not match the provided hash from Transitland {current_feed_version['sha1']}"
                 )
             
-            feed_last_fetched = dt.datetime.now(tz=dt.timezone.utc)
+            feed_last_fetched = datetime_today
             #feed_end_of_life_dt = dt.datetime.fromisoformat(df_current_feed_version["latest_calendar_date"])
-            feed_attribution_url = get_str_or_na(feed["license"]["url"])
-            feed_attribution_text = get_str_or_na(feed["license"]["attribution_text"])
-            feed_attribution_instructions = get_str_or_na(feed["license"]["attribution_instructions"])
-            feed_must_attribute = yes_no_to_bool(feed["license"]["use_without_attribution"])
+            feed_attribution_url = get_str_or_na(feed_metadata["license"]["url"])
+            feed_attribution_text = get_str_or_na(feed_metadata["license"]["attribution_text"])
+            feed_attribution_instructions = get_str_or_na(feed_metadata["license"]["attribution_instructions"])
+            feed_must_attribute = yes_no_to_bool(feed_metadata["license"]["use_without_attribution"])
             
 
             # Load the feed object
@@ -182,6 +209,7 @@ class GTFSDataObject(SpatialDataObject):
                 "attribution_instructions": feed_attribution_instructions,
                 "attribution_must_attribute": feed_must_attribute,
                 "last_fetch_succeeded": True,
+                "sha1_hash": response.sha1_hash
             }
 
             # Add the feed to the network
@@ -191,33 +219,40 @@ class GTFSDataObject(SpatialDataObject):
         gdf_stop_locations["min_overlap_headway"] = network.get_headways_by_stop_overlap().groupby(level=0).min()
         gdf_stop_locations["total_frequency"] = network.get_frequencies_by_stop_overlap().groupby(level=0).max()
         gdf_stop_locations["transfer"] = network.get_transfer_status()
-        gdf_stop_locations["mode"] = network.get_mode_classification()
+        gdf_stop_locations["mode"] = network.get_mode()
+        gdf_stop_locations["mode_classification"] = network.get_mode_classification()
         
         self.df_feeds_metadata = df_feeds_metadata
-        self.gdf_stop_locations = gdf_stop_locations
+        # Save the stops, excluding any that do not have service associated with them
+        #TODO: there should be a funciton to perform this filter in TransitNetwork
+        self.gdf = gdf_stop_locations.dropna(subset=["mode"])
         self._network = network
+        gdf_stop_locations_saveable = self._make_safe_for_geojson(self.gdf)
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
-        gdf_stop_locations.to_file(stops_geometry_path)
-        return network.get_headways_by_stop_overlap().groupby(level=0).min()
+        gdf_stop_locations_saveable.to_file(stops_geometry_path)
+        self._set_is_loaded()
 
     def get_scores(self) -> pd.Series:
-        return self._get_scores_from_function(score_transit_stops, ["headway_string", "primary_mode"])
+        raise NotImplementedError
 
     def get_score_decay_function(self) -> Callable[[float], float]:
-        return get_linear_decay_function(500)
+        raise NotImplementedError
 
     def get_folium_plot(self) -> folium.GeoJson:
         gtfs_popup = folium.GeoJsonPopup(
             fields=GTFS_STOPS_FIELDS_TO_DISPLAY,
-            aliases=GTFS_ALIASES,
+            #aliases=GTFS_ALIASES,
         )
+        gdf_safe = self._make_safe_for_geojson(self.gdf)
         gtfs_geojson = folium.GeoJson(
-            self.gdf[[*GTFS_STOPS_FIELDS_TO_DISPLAY, self.gdf.geometry.name]],
+            gdf_safe.reset_index()[
+                [*GTFS_STOPS_FIELDS_TO_DISPLAY, self.gdf.geometry.name]
+            ],
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
             style_function=lambda x: {
-                "fillColor": MODE_COLOR_MAP[x["properties"]["mode"]]
+                "fillColor": MODE_COLOR_MAP[Mode(x["properties"]["mode"])]
             },
         )
         return gtfs_geojson
@@ -255,8 +290,6 @@ class GTFSDataObject(SpatialDataObject):
             print(f"WARN: Download for {feed_id} failed even with Playwright")
             return DownloadResponse(False, None, None)
         return DownloadResponse(True, feed_output_path, sha1_hash)
-
-        
 
     def _recursively_make_transitland_call(self, max_responses, initial_load_area_bounds, max_calls):
         # Call transitland recursively with a smaller bounding box until it doesn't give an error
@@ -334,4 +367,32 @@ class GTFSDataObject(SpatialDataObject):
                 return output, current_max_calls
         output, _ = recursively_make_transitland_call_help(max_responses, initial_load_area_bounds, max_calls)
         return output
+    
+    @staticmethod
+    def _make_safe_for_geojson(gdf):
+        gdf_copy = gdf.copy()
+        gdf_copy[["mode", "mode_classification"]] = gdf_copy[
+            ["mode", "mode_classification"]
+        ].map(lambda x: NO_MODE if safe_is_na(x) else  x.value)
+        gdf_copy["transfer"] = gdf_copy["transfer"].fillna(-1).map({
+            True: 1,
+            False: 0,
+        })
+        return gdf_copy
+    
+    @staticmethod
+    def _convert_from_geojson(gdf):
+        gdf_copy = gdf.copy()
+        gdf_copy["mode"] = gdf_copy["mode"].map(
+            lambda x: np.nan if x == NO_MODE else Mode(x)
+        )
+        gdf_copy["mode_classification"] = gdf_copy["mode_classification"].map(
+            lambda x: np.nan if x == NO_MODE else ModeClassification(x)
+        )
+        gdf_copy["transfer"] = gdf_copy["transfer"].map({
+            1: True,
+            0: False,
+            -1: np.nan
+        })
+        return gdf_copy
 
