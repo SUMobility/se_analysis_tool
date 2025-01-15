@@ -164,9 +164,12 @@ class FeedWrapper:
 
     # "Private"
     def _get_trips_by_stop_tuple(self, df_stop_times):
-        df_stop_times_indexed_by_trip = df_stop_times.set_index("trip_id")
+        df_stop_times_indexed_by_trip = df_stop_times.sort_values(
+            ["stop_sequence", "trip_id"], kind="stable"
+        ).set_index("trip_id")
         df_trips = self.feed.trips.set_index("trip_id")
         df_trips_filtered = df_trips.loc[df_stop_times_indexed_by_trip.index.unique()]
+
         df_trips_filtered["stop_tuple"] = pd.Series(
             df_trips_filtered.index, index=df_trips_filtered.index
         ).map( #TODO: this is probably slower than a merge and groupby

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import Iterable
 
 import numpy as np
@@ -7,6 +6,7 @@ import datetime as dt
 import geopandas as gpd
 import pandas as pd
 from scipy.stats import percentileofscore
+from MobilityHubDataObjects.constants import StopClassification
 from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.transitWrappers import FeedWrapper
@@ -21,16 +21,8 @@ CONFIG_EVENING_PEAK_START = "evening_peak_start"
 CONFIG_EVENING_PEAK_END = "evening_peak_end"
 CONFIG_PEAK_WEIGHT = "peak_weight"
 CONFIG_HEADWAY_PERCENTILE = "headway_percentile"
+CONFIG_MIN_TRIPS_TO_INCLUDE_SERVICE_PATTERN = "service_pattern_cutoff"
 CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY = "trip_cutoff"
-CONFIG_CLASSIFICATION = "classification_values"
-CONFIG_OVERLAP_HEADWAY_MOBILITY_HUB_CUTOFF_BUS = "mh_bus_abs"
-CONFIG_OVERLAP_HEADWAY_MOBILITY_HUB_PERCENTILE_BUS = "mh_bus_percentile"
-CONFIG_OVERLAP_HEADWAY_TRUNK_CUTOFF_BUS = "trunk_bus_abs"
-CONFIG_OVERLAP_HEADWAY_TRUNK_QUANTILE_BUS = "trunk_bus_percentile"
-CONFIG_OVERLAP_HEADWAY_TRUNK_RAIL_CUTOFF = "trunk_rail_abs"
-CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_MOBILITY_HUB_BUS = "mh_bus_transfer"
-CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_TRUNK_BUS = "trunk_bus_transfer"
-CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_RAIL = "trunk_rail_transfer"
 PERIOD_MORNING_PEAK_NAME = "morning_peak"
 PERIOD_EVENING_PEAK_NAME = "evening_peak"
 PERIOD_OFF_PEAK_NAME = "off_peak"
@@ -46,28 +38,14 @@ DEFAULT_FEED_CONFIG = {
     CONFIG_EVENING_PEAK_START: dt.time(hour=16, minute=0),
     CONFIG_EVENING_PEAK_END: dt.time(hour=18),
     CONFIG_PEAK_WEIGHT: 0.5,
-    CONFIG_HEADWAY_PERCENTILE: 50,
-    CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY: 5,
-    CONFIG_CLASSIFICATION: {
-        CONFIG_OVERLAP_HEADWAY_MOBILITY_HUB_CUTOFF_BUS: 15,
-        CONFIG_OVERLAP_HEADWAY_MOBILITY_HUB_PERCENTILE_BUS: 0.15,
-        CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_MOBILITY_HUB_BUS: 3,
-        CONFIG_OVERLAP_HEADWAY_TRUNK_CUTOFF_BUS: 8,
-        CONFIG_OVERLAP_HEADWAY_TRUNK_QUANTILE_BUS: 0.05,
-        CONFIG_OVERLAP_HEADWAY_TRUNK_RAIL_CUTOFF: 25,
-        CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_TRUNK_BUS: 8,
-        CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_RAIL: 2,
-    },
+    CONFIG_HEADWAY_PERCENTILE: 80,
+    CONFIG_MIN_TRIPS_TO_INCLUDE_SERVICE_PATTERN: 5,
+    CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY: 2,
 }
 
 PATTERN_STARTS_PLACEHOLDER = "START"
 PATTERN_ENDS_PLACEHOLDER = "END"
 PLACEHOLDER_VALUES = (PATTERN_STARTS_PLACEHOLDER, PATTERN_ENDS_PLACEHOLDER)
-
-class StopClassification(Enum):
-    NOT_MOBILITY_HUB = 0
-    BRANCH = 1
-    TRUNK = 2
 
 @dataclass
 class Period:
@@ -206,7 +184,8 @@ class TransitNetwork:
         self._reset_graph_status()
         print(f"Feed {feed_id} added")
 
-    def get_headways_by_stop_overlap(self):
+    def get_weighted_headways_by_stop_overlap(self):
+        #TODO: figure out why weighted headway and frequency is being calculated wrong
         headway_group_function = lambda group: self._get_headways_for_group_helper(
             group, self.percentile
         )
@@ -216,6 +195,7 @@ class TransitNetwork:
             [period.name for period in self.periods],
             headway_group_function
         )
+        return df_overlap_headways
         weighted_headways = self._get_weighted_value(
             df_overlap_headways, 
             [self.morning_peak.name, self.evening_peak.name],
@@ -225,7 +205,7 @@ class TransitNetwork:
         ).rename("weighted_headway")
         return weighted_headways
 
-    def get_frequencies_by_stop_overlap(self):
+    def get_weighted_frequencies_by_stop_overlap(self):
         frequency_group_functions = [
             lambda group: self._get_frequencies_for_group_helper(group, self.morning_peak),
             lambda group: self._get_frequencies_for_group_helper(group, self.evening_peak),
@@ -356,16 +336,17 @@ class TransitNetwork:
         return primary_mode_classification_by_stop_id.reindex(self.gdf_stops.index).copy()
 
     @staticmethod
-    def _get_weighted_value(df, peak_names, off_peak_name, peak_weight, max=True):
-        df_with_zeroes = df.fillna(0)
+    def _get_weighted_value(df, peak_names, off_peak_name, peak_weight, max=True, na_value=None):
         peak_max = None
         if max:
-            peak_max = df_with_zeroes[peak_names].max(axis=1)
+            peak_max = df[peak_names].max(axis=1)
         else:
-            peak_max = df_with_zeroes[peak_names].min(axis=1)
-        weighted_values = pd.concat(
-            [peak_max * peak_weight, df_with_zeroes[off_peak_name] * (1 - peak_weight)], axis=1
-        ).sum(axis=1)
+            peak_max = df[peak_names].min(axis=1)
+        off_peak_value = df[off_peak_name]
+        if na_value is not None:
+            peak_max = peak_max.fillna(na_value)
+            off_peak_value.fillna(na_value)
+        weighted_values = (peak_max * peak_weight) + (off_peak_value * (1 - peak_weight))
         return weighted_values
 
     @staticmethod
@@ -384,7 +365,6 @@ class TransitNetwork:
             )
         df_results = pd.concat(result_series_list, axis=1)
         return df_results
-
     def _create_route_graph(self):    
         df_stop_graph = self.df_stop_times.sort_values(
             ["trip_id_unique", "stop_sequence"], kind="stable"
@@ -394,8 +374,7 @@ class TransitNetwork:
             subset=["stop_id_unique", "service_pattern_id_unique"]
         )[
             ["stop_id_unique", "service_pattern_id_unique", "stop_sequence"]
-        ]
-        df_service_patterns_by_stop = df_stop_graph.set_index("stop_id_unique")["service_pattern_id_unique"]
+        ].copy()
         # Get info about the next and previous stop (so we now have a graph of the network)
         service_pattern_stop_groupby = df_stop_graph.groupby("service_pattern_id_unique")["stop_id_unique"]
         df_stop_graph["next_stop"] = service_pattern_stop_groupby.shift(periods=-1)
@@ -403,62 +382,20 @@ class TransitNetwork:
         # Mark stops as first or last stop, needed to get transfers
         df_stop_graph["last_stop"] = df_stop_graph["next_stop"].isna()
         df_stop_graph["first_stop"] = df_stop_graph["previous_stop"].isna()
-        # Get a reference to the service patterns at the next and previous stops
-        for stop_id_column, new_column_name in (
-            ("stop_id_unique", "service_pattern_ids_at_current_stop"),
-            ("next_stop", "service_pattern_ids_at_next_stop"), 
-            ("previous_stop", "service_pattern_ids_at_previous_stop"),
-        ):
-            trip_ids = df_stop_graph[stop_id_column].dropna().map(
-                lambda stop_id: df_service_patterns_by_stop.loc[stop_id]
-            )
-            df_stop_graph[new_column_name] = trip_ids.map(
-                lambda stop_id_or_series: (stop_id_or_series,) if type(stop_id_or_series) is str else tuple(stop_id_or_series.to_numpy())
-            )
-        # Get a series of each overlapping service pattern
-        df_stop_graph["overlapping_service_patterns"] = pd.Series( #TODO: clean this mess up
-            list(zip(
-                df_stop_graph["service_pattern_ids_at_current_stop"],
-                df_stop_graph["service_pattern_ids_at_next_stop"],
-                df_stop_graph["service_pattern_ids_at_previous_stop"]
-            )),
-            index=df_stop_graph.index
-        ).map(
-            lambda x: tuple(np.intersect1d(np.intersect1d(x[0], x[1]), x[2]))
-        )
-        df_stop_graph_ends = df_stop_graph.loc[
-            df_stop_graph["next_stop"].isna()
-        ].copy()
-        df_stop_graph_ends["overlapping_service_patterns"] = pd.Series(
-            list(zip(
-                df_stop_graph_ends["service_pattern_ids_at_current_stop"],
-                df_stop_graph_ends["service_pattern_ids_at_previous_stop"]
-            )),
-            index=df_stop_graph_ends.index
-        ).map(
-            lambda x: tuple(np.intersect1d(*x))
-        ).copy()
-        df_stop_graph_starts = df_stop_graph.loc[
-            df_stop_graph["previous_stop"].isna()
-        ].copy()
-        df_stop_graph_starts["overlapping_service_patterns"] = pd.Series(
-            list(zip(
-                df_stop_graph_starts["service_pattern_ids_at_current_stop"],
-                df_stop_graph_starts["service_pattern_ids_at_next_stop"]
-            )),
-            index=df_stop_graph_starts.index
-        ).map(
-            lambda x: tuple(np.intersect1d(*x))
-        ).copy()
-        df_stop_graph["overlapping_service_patterns"] = df_stop_graph[
-            "overlapping_service_patterns"
-        ].where(
-            ~df_stop_graph["next_stop"].isna(),
-            df_stop_graph_ends["overlapping_service_patterns"].reindex(df_stop_graph.index)
-        ).where(
-            ~df_stop_graph["previous_stop"].isna(),
-            df_stop_graph_starts["overlapping_service_patterns"].reindex(df_stop_graph.index)
-        )
+
+        # Get service patterns indexed by their next and previous stop
+        df_stop_graph_no_endings = df_stop_graph.loc[~df_stop_graph["last_stop"]].copy()
+        service_patterns_by_next_current_stop = df_stop_graph_no_endings.dropna(subset=["next_stop"]).set_index(
+            ["stop_id_unique", "next_stop"]
+        )["service_pattern_id_unique"]
+        # Get a tuple of service patterns that share the same current and next stop, but that do not terminate
+        get_as_tuple = lambda series_or_value: (series_or_value,) if type(series_or_value) is str else tuple(series_or_value.values)
+        df_stop_graph["overlapping_service_patterns"] = df_stop_graph_no_endings[["stop_id_unique", "next_stop"]].apply(
+            lambda row: (
+                get_as_tuple(service_patterns_by_next_current_stop.loc[row["stop_id_unique"], row["next_stop"]]) 
+            ),
+            axis=1
+        ).reindex_like(df_stop_graph)
         #merged_overlaps = df_merged_stops_service_pattern.reset_index().groupby( #TODO: couldn't this just use drop_duplicates()
         #    ["stop_id_unique", "overlapping_service_patterns"]
         #).first().reset_index(level=1)["overlapping_service_patterns"] # TODO: For any patterns that have some intersection, take the union of all of them so that all lists of service patterns are disjoint. also drop empty arrays
@@ -625,8 +562,6 @@ class TransitNetwork:
         time_series_length = (
             dt.datetime.combine(ARBITRARY_DATE, period.end) - dt.datetime.combine(ARBITRARY_DATE, period.start)
         )
-        print(period.start, period.end)
-        print(time_series_length)
         frequency_function = get_frequency_function(time_series_length)
         frequencies = stop_times_grouped.apply(frequency_function)
         return frequencies
@@ -672,7 +607,9 @@ class TransitNetwork:
     
     @staticmethod
     def _condense_overlaps(overlaps):
-        overlaps_no_empty = [overlap for overlap in overlaps if len(overlap) > 0]
+        overlaps_no_empty = [
+            overlap for overlap in overlaps if (not safe_is_na(overlap)) and len(overlap) > 0
+        ]
         skip_indices = []
         out = []
         for i, overlap_i in enumerate(overlaps_no_empty):
