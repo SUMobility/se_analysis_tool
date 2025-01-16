@@ -6,11 +6,13 @@ import pandas as pd
 import geopandas as gpd
 import traceback
 
-from MobilityHubDataObjects.constants import GEODESIC_CRS, GTFS_ROUTE_TYPE_TO_ID_MAP, ROUTE_PRIORITY_MAP, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP
+from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP
+from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.transitWrappers.constants import ROUTE_PRIORITY_MAP
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
 
 
-class GTFSFeedWrapper:
+class GTFSFeedWrapperLegacy:
     # Public
     loaded = False
     def __init__(self, feed_path: str | pathlib.Path):
@@ -125,7 +127,7 @@ class GTFSFeedWrapper:
             return np.nan
         route_type_ids = self.routes.loc[route_ids, "route_mode_key"].unique()
         primary_mode_id = sorted(route_type_ids, key=lambda x: ROUTE_PRIORITY_MAP[x])[0]
-        return ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP[primary_mode_id]
+        return primary_mode_id
 
     def get_headway_string_from_headway(self, stop_headway_object: dict) -> list[float]:
         if safe_is_na(stop_headway_object):

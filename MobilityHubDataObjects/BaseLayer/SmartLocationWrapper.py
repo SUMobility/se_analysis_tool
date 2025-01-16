@@ -3,8 +3,9 @@ from typing import Iterable
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from MobilityHubDataObjects.BaseLayer.constants import SMART_LOCATION_COLUMNS
+from MobilityHubDataObjects.BaseLayer.constants import SMART_LOCATION_COLUMNS, SMART_LOCATION_JOB_ACCESSIBILITY_COLUMN
 from MobilityHubDataObjects.constants import GEODESIC_CRS
+from MobilityHubDataObjects.utils import overlap_and_weight_values
 from .utils import split_county_fips
 
 
@@ -35,26 +36,17 @@ class SmartLocationWrapper:
         gdf_smartlocation = gdf_smartlocation.loc[
             gdf_smartlocation.intersects(gdf_bgs_current_filtered.unary_union)
         ]
-        # Overlay the current and smart location block groups and get the area that the 2021 block groups overlap the 2018 block groups
-        gdf_bgs_current_projected = gdf_bgs_current_filtered.to_crs(self.local_crs)
-        gdf_bgs_current_projected["original_geoid"] = gdf_bgs_current_projected.index
-        gdf_bgs_current_projected["original_area"] = gdf_bgs_current_projected.area
-        gdf_bgs_overlapped = gdf_bgs_current_projected.overlay(gdf_smartlocation, how="intersection")
-        # Round values that are gvery close to 1 or 0 to avoid floating point errors and to discount very small overlaps
-        gdf_bgs_overlapped["area_proportion"] = gdf_bgs_overlapped.area / gdf_bgs_overlapped["original_area"]
-        gdf_bgs_overlapped.loc[gdf_bgs_overlapped["area_proportion"] < 0.01, "area_proportion"] = 0
-        gdf_bgs_overlapped.loc[gdf_bgs_overlapped["area_proportion"] > 0.99, "area_proportion"] = 1
-        # Infer the value for the relevant value of the 2021 block groups, based on the proportion of overlap with each of the 2018 block groups
-        df_weighted_values = pd.concat([
-            gdf_bgs_overlapped[SMART_LOCATION_COLUMNS].multiply(gdf_bgs_overlapped["area_proportion"], axis="index"),
-            gdf_bgs_overlapped["original_geoid"],
-        ], axis=1)
-        gdf_bgs_current_projected[SMART_LOCATION_COLUMNS] = df_weighted_values.groupby("original_geoid")[SMART_LOCATION_COLUMNS].sum()
-        gdf_bgs_current_projected[SMART_LOCATION_COLUMNS] = gdf_bgs_current_projected[SMART_LOCATION_COLUMNS].map(
+        gdf_inferred_values_geographic = overlap_and_weight_values(
+            gdf_keep_geometry=gdf_bgs_current_filtered,
+            gdf_keep_data=gdf_smartlocation,
+            keep_columns=SMART_LOCATION_COLUMNS,
+            local_crs=self.local_crs
+        )
+        gdf_inferred_values_geographic[SMART_LOCATION_COLUMNS] = gdf_inferred_values_geographic[SMART_LOCATION_COLUMNS].map(
             lambda x: np.nan if x < 0 else x
         )
         # Save the results
-        self.gdf = gdf_bgs_current_projected.to_crs(GEODESIC_CRS).copy()
+        self.gdf = gdf_inferred_values_geographic.to_crs(GEODESIC_CRS).copy()
         self._set_is_loaded(county_fips)
 
     def get_is_loaded(self, county_fips: Iterable[str]) -> bool:

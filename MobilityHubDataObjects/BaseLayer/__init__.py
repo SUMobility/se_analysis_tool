@@ -9,6 +9,8 @@ from .SmartLocationPopulationDensity import *
 from .SmartLocationJobDensity import *
 from .SmartLocationJobAccessibility import *
 from .SmartLocationNationalWalkabilityIndex import *
+from .SmartLocationRetailEntertainmentJobDensity import *
+from .SmartLocationRawJobs import *
 from .SmartLocationWrapper import *
 
 __all__ = [
@@ -23,5 +25,7 @@ __all__ = [
     "SmartLocationJobDensity",
     "SmartLocationJobAccessibility",
     "SmartLocationNationalWalkabilityIndex",
+    "SmartLocationRetailEntertainmentJobDensity",
+    "SmartLocationRawJobs",
     "SmartLocationWrapper",
 ]

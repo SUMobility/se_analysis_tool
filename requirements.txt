@@ -112,6 +112,7 @@ rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rpds-py==0.20.0
 Rtree==1.3.0
+scipy==1.14.1
 Send2Trash==1.8.3
 setuptools==74.1.2
 shapely==2.0.6

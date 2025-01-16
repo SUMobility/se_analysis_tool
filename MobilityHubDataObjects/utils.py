@@ -1,6 +1,7 @@
 import hashlib
 import pathlib
 import subprocess
+from typing import Iterable
 import folium
 import pandas as pd
 from pyproj import Transformer, Geod
@@ -11,6 +12,7 @@ import datetime as dt
 from playwright.async_api import async_playwright, Playwright, Error, TimeoutError
 import zipfile
 import geopandas as gpd
+from scipy.stats import percentileofscore
 
 from MobilityHubDataObjects import SpatialDataObject
 
@@ -217,4 +219,38 @@ def get_scores_for_all_objects(objects: list[SpatialDataObject], object_names: l
         gdf["type"] = name
         gdfs.append(gdf)
     return pd.concat(gdfs)
-    
+
+def overlap_and_weight_values(gdf_keep_geometry, gdf_keep_data, keep_columns, local_crs):
+    # Overlay the current and smart location block groups and get the area that the 2021 block groups overlap the 2018 block groups
+    gdf_keep_geometry_projected = gdf_keep_geometry.to_crs(local_crs)
+    gdf_keep_data_projected = gdf_keep_data.to_crs(local_crs)
+    gdf_keep_geometry_projected["original_index"] = gdf_keep_geometry_projected.index
+    gdf_keep_geometry_projected["original_area"] = gdf_keep_geometry_projected.area
+    gdf_bgs_overlapped = gdf_keep_geometry_projected.overlay(gdf_keep_data_projected, how="intersection")
+    # Round values that are gvery close to 1 or 0 to avoid floating point errors and to discount very small overlaps
+    gdf_bgs_overlapped["area_proportion"] = gdf_bgs_overlapped.area / gdf_bgs_overlapped["original_area"]
+    gdf_bgs_overlapped.loc[gdf_bgs_overlapped["area_proportion"] < 0.01, "area_proportion"] = 0
+    gdf_bgs_overlapped.loc[gdf_bgs_overlapped["area_proportion"] > 0.99, "area_proportion"] = 1
+    # Infer the value for the relevant value of the 2021 block groups, based on the proportion of overlap with each of the 2018 block groups
+    df_weighted_values = pd.concat([
+        gdf_bgs_overlapped[keep_columns].multiply(
+            gdf_bgs_overlapped["area_proportion"], axis="index"
+        ),
+        gdf_bgs_overlapped["original_index"],
+    ], axis=1)
+    df_inferred_values = df_weighted_values.groupby("original_index")[keep_columns].sum()
+    assert (gdf_keep_geometry.sort_index().index == df_inferred_values.sort_index().index).all()
+    gdf_inferred_values = gpd.GeoDataFrame(
+        df_inferred_values.sort_index(),
+        geometry=gdf_keep_geometry.sort_index().geometry
+    )
+    return gdf_inferred_values
+
+#TODO: move to utils.py
+def get_quantile_ranking_series(s: pd.Series) -> pd.Series:
+    dropped = s.dropna()
+    return pd.Series(
+        get_quantile_ranking(dropped), index=dropped.index
+    ).reindex(s.index)
+def get_quantile_ranking(a: Iterable[float | int]) -> np.array:
+    return [percentileofscore(a, i, kind="mean") / 100 for i in a]
