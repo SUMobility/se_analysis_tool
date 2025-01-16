@@ -29,7 +29,7 @@ DEFAULT_CONFIG_CLASSIFICATION = {
     CONFIG_OVERLAP_HEADWAY_TRUNK_CUTOFF_BUS: 8,
     CONFIG_OVERLAP_HEADWAY_TRUNK_QUANTILE_BUS: 0.05,
     CONFIG_OVERLAP_HEADWAY_TRUNK_RAIL_CUTOFF: 25,
-    CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_TRUNK_BUS: 8,
+    CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_TRUNK_BUS: 6,
     CONFIG_TOTAL_FREQUENCY_DIVERGING_ROUTES_RAIL: 2,
 }
 
@@ -43,7 +43,7 @@ USED_BASE_LAYER_METRICS = [
 MIN_JOB_DENSITY = 1
 POINT_BUFFER_RADIUS = 500
 
-OUTPUT_COLUMNS = ["od_type", "trunk_branch_type",  "od_score", "investment_score","mode", "min_overlap_headway", "total_frequency", "adjusted_headway", "transfer"]
+OUTPUT_COLUMNS = ["od_type", "trunk_branch_type",  "od_score", "investment_score","mode", "min_overlap_headway", "total_frequency", "adjusted_headway", "transfer", "Population Density (people/acre)"]
 OUTPUT_NAMES = ["Is Destination?", "Is Trunk?" "OD Score", "Investment Score", "Mode", "Best Headway", "Total Frequency", "Adjusted Headway", "Is Transfer?"]
 
 class MobilityHubDataObject(SpatialDataObject):
@@ -63,7 +63,7 @@ class MobilityHubDataObject(SpatialDataObject):
             self.transit_stop_data_object.gdf.within(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area))
         ]
         gdf_merged_transit_stops = assign_base_layer_vars_to_points(
-            self.base_layer.gdf, gdf_transit_stops, USED_BASE_LAYER_METRICS
+            self.base_layer.gdf, gdf_transit_stops, USED_BASE_LAYER_METRICS, POINT_BUFFER_RADIUS, self.local_crs
         )
         # Correct for cases where headways are unrealistically high (happens when service is very bunched)
         min_reasonable_headway = 60 / gdf_merged_transit_stops["total_frequency"]
@@ -78,7 +78,7 @@ class MobilityHubDataObject(SpatialDataObject):
         # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
         gdf_merged_transit_stops["geometry"] = gdf_merged_transit_stops.geometry
         gdf_merged_transit_stops.geometry = gdf_merged_transit_stops["geometry"]
-        print(OUTPUT_COLUMNS)
+        print(gdf_merged_transit_stops.columns)
         self.gdf = gdf_merged_transit_stops[[*OUTPUT_COLUMNS, "geometry"]]
         self._set_is_loaded()
     
@@ -239,12 +239,31 @@ class MobilityHubDataObject(SpatialDataObject):
         return gdf_stops_with_classification["classification"].copy()
 
 
-def assign_base_layer_vars_to_points(gdf_base, gdf_points, base_vars):
+def assign_base_layer_vars_to_points(gdf_base, gdf_points, base_vars, radius, projected_crs):
     assert np.intersect1d(base_vars, gdf_points.columns).size == 0
     # TODO: this is naive approach
-    gdf_points_to_merge = gdf_points.copy().reset_index(names="original_index")
+    gdf_points_to_merge = gdf_points.copy().reset_index(drop=True).to_crs(projected_crs)
+    gdf_points_to_merge["unique_id"] = 1
+    gdf_points_to_merge["unique_id"] = gdf_points_to_merge["unique_id"].cumsum()
+    gdf_points_buffered = gdf_points_to_merge.copy()
+    gdf_points_buffered.geometry = gdf_points_to_merge.buffer(radius)
+    buffer_area = np.pi * (radius ** 2) #TODO: check this is right and there isn't a unit error
+    gdf_overlayed = gdf_points_buffered.overlay(
+        gdf_base[[*base_vars, gdf_base.geometry.name]].to_crs(projected_crs).copy(), 
+        how="intersection"
+    )
+    proportion = gdf_overlayed.area.div(buffer_area)
+    print(proportion)
+    gdf_overlayed[base_vars] = gdf_overlayed[base_vars].mul(proportion, axis=0)
+    gdf_base_values_on_points = gdf_overlayed.groupby("unique_id")[base_vars].sum()
+    assert gdf_points.index.size == gdf_base_values_on_points.index.size
+    gdf_merged = gdf_points_to_merge.merge(
+        gdf_base_values_on_points, on="unique_id", how="left", validate="one_to_one"
+    ).set_index(gdf_points.index, drop=True)
+    return gdf_merged
+
     gdf_merged = gdf_points_to_merge.sjoin(
-        gdf_base[[*base_vars, gdf_base.geometry.name]].to_crs(gdf_points_to_merge.crs).copy(),
+        gdf_base[[*base_vars, gdf_base.geometry.name]].to_crs(projected_crs).copy(),
         how="left",
         predicate="intersects"
     )

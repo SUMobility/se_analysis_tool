@@ -66,7 +66,7 @@ class FeedWrapper:
             self.df_routes["route_long_name"] = df_feed_routes_reindexed["route_long_name"].copy()
         else:
             self.df_routes["route_long_name"] = np.nan
-        self.df_routes["route_aggregated_name"] = df_feed_routes_reindexed["route_short_name"].fillna(
+        self.df_routes["route_aggregated_name"] = self.df_routes["route_short_name"].fillna(
             self.df_routes["route_long_name"].copy().fillna(
                 pd.Series(self.df_routes.index, index=self.df_routes.index).dropna()
             )
@@ -170,10 +170,18 @@ class FeedWrapper:
         df_trips = self.feed.trips.set_index("trip_id")
         df_trips_filtered = df_trips.loc[df_stop_times_indexed_by_trip.index.unique()]
 
+        def safe_get_tuple(value_or_series):
+            try:
+                return tuple(value_or_series.to_numpy())
+            except AttributeError:
+                return tuple(value_or_series,)
+            
         df_trips_filtered["stop_tuple"] = pd.Series(
             df_trips_filtered.index, index=df_trips_filtered.index
         ).map( #TODO: this is probably slower than a merge and groupby
-            lambda trip_id: tuple(df_stop_times_indexed_by_trip.loc[trip_id, "stop_id"].values)
+            lambda trip_id: (
+                safe_get_tuple(df_stop_times_indexed_by_trip.loc[trip_id, "stop_id"]) 
+            )
         )
         return df_trips_filtered.copy()
 

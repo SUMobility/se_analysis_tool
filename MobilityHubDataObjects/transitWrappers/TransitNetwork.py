@@ -195,7 +195,6 @@ class TransitNetwork:
             [period.name for period in self.periods],
             headway_group_function
         )
-        return df_overlap_headways
         weighted_headways = self._get_weighted_value(
             df_overlap_headways, 
             [self.morning_peak.name, self.evening_peak.name],

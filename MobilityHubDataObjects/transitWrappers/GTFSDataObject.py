@@ -215,9 +215,11 @@ class GTFSDataObject(SpatialDataObject):
             # Add the feed to the network
             network.add_feed(feed_object)
         gdf_stop_locations = network.gdf_stops.copy()
+        self._network = network
+        network.get_weighted_headways_by_stop_overlap().groupby(level=0).min().to_csv("test.csv")
         #df_route_summary = network.get_summary_routes_df()
-        gdf_stop_locations["min_overlap_headway"] = network.get_headways_by_stop_overlap().groupby(level=0).min()
-        gdf_stop_locations["total_frequency"] = network.get_frequencies_by_stop_overlap().groupby(level=0).max()
+        gdf_stop_locations["min_overlap_headway"] = network.get_weighted_headways_by_stop_overlap().groupby(level=0).min()
+        gdf_stop_locations["total_frequency"] = network.get_weighted_frequencies_by_stop_overlap().groupby(level=0).max()
         gdf_stop_locations["transfer"] = network.get_transfer_status()
         gdf_stop_locations["mode"] = network.get_mode()
         gdf_stop_locations["mode_classification"] = network.get_mode_classification()
@@ -226,7 +228,6 @@ class GTFSDataObject(SpatialDataObject):
         # Save the stops, excluding any that do not have service associated with them
         #TODO: there should be a funciton to perform this filter in TransitNetwork
         self.gdf = gdf_stop_locations.dropna(subset=["mode"])
-        self._network = network
         gdf_stop_locations_saveable = self._make_safe_for_geojson(self.gdf)
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
