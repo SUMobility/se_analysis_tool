@@ -1,4 +1,4 @@
-# sumc_fta_mobility_hub_project
+# Mobility Hub Data
 This repository contains a library and Jupyter notebooks for the SUMC Mobility Hub Site Selection Tool.
 
 ### Setting Up
