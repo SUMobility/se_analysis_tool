@@ -2,6 +2,8 @@ import hashlib
 import pathlib
 import subprocess
 from typing import Iterable
+from urllib.error import HTTPError
+from fiona.errors import DriverError
 import folium
 import pandas as pd
 from pyproj import Transformer, Geod
@@ -13,6 +15,7 @@ from playwright.async_api import async_playwright, Playwright, Error, TimeoutErr
 import zipfile
 import geopandas as gpd
 from scipy.stats import percentileofscore
+import appdirs
 
 from MobilityHubDataObjects import SpatialDataObject
 
@@ -254,3 +257,16 @@ def get_quantile_ranking_series(s: pd.Series) -> pd.Series:
     ).reindex(s.index)
 def get_quantile_ranking(a: Iterable[float | int]) -> np.array:
     return [percentileofscore(a, i, kind="mean") / 100 for i in a]
+
+def call_pygris_with_error_handling(pygris_function, *args, **kwargs):
+    try:
+        return pygris_function(*args, **kwargs)
+    except (HTTPError, DriverError) as error:
+        raise_tiger_http_error(error)
+
+def raise_tiger_http_error(error):
+    pygris_cache_dir = appdirs.user_cache_dir("pygris")
+    print(
+        f"The TIGER portal is currently unavailable. Please source files in the below exception from a mirror, ensure they have the default name, and place them in the Pygris cache folder: {pygris_cache_dir}"
+    )
+    raise error

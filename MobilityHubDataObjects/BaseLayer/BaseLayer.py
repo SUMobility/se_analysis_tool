@@ -15,26 +15,25 @@ from MobilityHubDataObjects.constants import GEODESIC_CRS
 from .ColorMaps import ColorMaps
 from .constants import ACS_YEAR, BUFFER_SIZE, EJSCREEN_NAME, GEOID_COLUMN, GEOID_NAME, TIGER_CRS
 from .entities import BaseLayerMetric
-from MobilityHubDataObjects.utils import transform_shapely_geometry
+from MobilityHubDataObjects.utils import call_pygris_with_error_handling, raise_tiger_http_error, transform_shapely_geometry
 
 class BaseLayer(SpatialDataObject):
-    def __init__(self, metrics: Iterable[BaseLayerMetric], counties_path: str | pathlib.Path, local_crs: int, color_map: ColorMaps, smooth: bool):
+    def __init__(self, metrics: Iterable[BaseLayerMetric], local_crs: int, color_map: ColorMaps, smooth: bool, remove_water=True):
         self.metrics = metrics
-        self.counties_path = pathlib.Path(counties_path).resolve()
         self.local_crs = local_crs
         # Get the color map function
         self.color_map_function = color_map.value
         self.smooth = smooth
+        self.remove_water = remove_water
     def load_data(
         self,
         load_area: (shapely.MultiPolygon | shapely.Polygon),
         load_area_crs: int
     ):
         # Load a gdf of counties
-        gdf_counties = gpd.read_file(
-            self.counties_path,
-            mask=(transform_shapely_geometry(load_area_crs, TIGER_CRS, load_area))
-        )
+        gdf_counties_national = call_pygris_with_error_handling(
+            pygris.counties, cache=True, year=2023
+        ).to_crs(load_area_crs)
         # Shrink the load area slightly to avoid getting bordering geometries
         load_area_shrunk = transform_shapely_geometry(
             self.local_crs, load_area_crs, shapely.buffer(
@@ -43,11 +42,12 @@ class BaseLayer(SpatialDataObject):
                 ), BUFFER_SIZE
             )
         )
-        gdf_counties = gdf_counties.loc[gdf_counties.intersects(load_area_shrunk)]
+        gdf_counties = gdf_counties_national.loc[gdf_counties_national.intersects(load_area_shrunk)].copy()
         # Get the TIGER block group data
         gdf_tiger = pd.concat(
             gdf_counties[GEOID_COLUMN].map(
-                lambda counties_fips: pygris.block_groups(
+                lambda counties_fips: call_pygris_with_error_handling(
+                    pygris.block_groups,
                     state=counties_fips[:2],
                     county=counties_fips[2:5],
                     year=ACS_YEAR,
@@ -55,7 +55,8 @@ class BaseLayer(SpatialDataObject):
                 )
             ).values
         )
-        gdf_tiger = erase_water(gdf_tiger.loc[gdf_tiger.intersects(load_area)])
+        if self.remove_water:
+            gdf_tiger = call_pygris_with_error_handling(erase_water, gdf_tiger.loc[gdf_tiger.intersects(load_area)], cache=True)
         gdf_tiger = gdf_tiger.set_index("GEOID")
         block_group_centroids = gdf_tiger.to_crs(self.local_crs).centroid
         metric_names = []

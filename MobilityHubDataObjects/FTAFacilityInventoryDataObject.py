@@ -3,6 +3,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import pygris
 import shapely
 from pyproj import CRS
 import folium
@@ -12,7 +13,7 @@ from osmnx import _errors as OsmnxExceptions
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
-from MobilityHubDataObjects.utils import basic_circle_marker, safe_is_na
+from MobilityHubDataObjects.utils import basic_circle_marker, call_pygris_with_error_handling, raise_tiger_http_error, safe_is_na
 
 from .SpatialDataObject import SpatialDataObject
 
@@ -36,12 +37,10 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
     def __init__(
         self,
         fta_path: (str | pathlib.Path),
-        states_path: (str | pathlib.Path),
         osm_cache_folder: (str | pathlib.Path),
         fta_sheet_name: (str | None) = None,
     ):
         self.fta_path = pathlib.Path(fta_path)
-        self.states_path = pathlib.Path(states_path)
         self.osm_cache_folder = pathlib.Path(osm_cache_folder)
         self.sheet_name = fta_sheet_name
 
@@ -106,7 +105,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
                 df_inventory[column].str.strip().isin(PARKING_FILTER[column])
             ].copy()
         # Get states that overlap with the load area
-        gdf_states = gpd.read_file(self.states_path.resolve()).to_crs(load_area_crs)
+        gdf_states = call_pygris_with_error_handling(pygris.states, cb=False, year=2023, cache=True)
         gdf_relevant_states = gdf_states.loc[gdf_states.intersects(load_area), "STUSPS"]
         # Filter the inventory to only contain entries within the relevant states
         df_inventory = df_inventory.loc[df_inventory["State"].isin(gdf_relevant_states)]    

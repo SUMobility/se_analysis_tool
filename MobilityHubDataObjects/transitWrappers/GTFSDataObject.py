@@ -216,7 +216,6 @@ class GTFSDataObject(SpatialDataObject):
             network.add_feed(feed_object)
         gdf_stop_locations = network.gdf_stops.copy()
         self._network = network
-        network.get_weighted_headways_by_stop_overlap().groupby(level=0).min().to_csv("test.csv")
         #df_route_summary = network.get_summary_routes_df()
         gdf_stop_locations["min_overlap_headway"] = network.get_weighted_headways_by_stop_overlap().groupby(level=0).min()
         gdf_stop_locations["total_frequency"] = network.get_weighted_frequencies_by_stop_overlap().groupby(level=0).max()

@@ -225,7 +225,6 @@ class MobilityHubDataObject(SpatialDataObject):
         gdf_stops_mobility_hub["is_trunk"] = gdf_stops_mobility_hub[
             ["trunk_from_headway", "trunk_from_transfer", "trunk_from_headway_quantile"]
         ].fillna(False).any(axis=1)
-        gdf_stops_mobility_hub_only_other.to_csv("test.csv")
         gdf_stops_with_classification = gdf_stops_copy.merge(
             gdf_stops_mobility_hub[["is_trunk", "trunk_from_headway", "trunk_from_transfer", "trunk_from_headway_quantile"]],
             how="left", left_index=True, right_index=True, validate="one_to_one"

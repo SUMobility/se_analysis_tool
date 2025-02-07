@@ -9,3 +9,4 @@ cache/tiger_cache/*
 !cache/osmnx_cache/.gitkeep
 !cache/tiger_cache/.gitkeep
 gtfs/
+.DS_store
