@@ -14,7 +14,7 @@ import pandas as pd
 import geopandas as gpd
 import pathlib
 
-from MobilityHubDataObjects.transitWrappers.constants import MODE_COLOR_MAP, NO_MODE, ROUTE_TYPE_TO_ROUTE_DISPLAY_NAME_MAP, Mode, ModeClassification
+from MobilityHubDataObjects.transitWrappers.constants import CONFIG_CLUSTERING_ENABLED, MODE_COLOR_MAP, NO_MODE, Mode, ModeClassification
 from MobilityHubDataObjects.transitWrappers import TransitNetwork
 from MobilityHubDataObjects.transitWrappers.FeedWrapper import FeedWrapper
 from MobilityHubDataObjects.utils import basic_circle_marker, download_file_with_playwright, download_file_with_requests, download_latest_feed_version_from_transitland, filter_two_corresponding_arrays, get_str_or_na, safe_is_na, transform_shapely_geometry, yes_no_to_bool
@@ -34,23 +34,26 @@ GTFS_FEEDS_FIELDS_TO_STORE = [
     "attribution_must_attribute",
     "last_fetch_succeeded",
 ]
-GTFS_STOPS_FIELDS_TO_DISPLAY = [
-    "feed",
-    #"agency_name",
-    "stop_id_unique",
-    #"stop_name",
+
+
+GTFS_STOPS_FIELDS_TO_DISPLAY_BASE = [
     "min_overlap_headway",
     "total_frequency",
     "transfer",
     "mode",
     "mode_classification",
-    #"pretty_printed_headway",
 ]
-GTFS_FIELDS_TO_KEEP = [
-    *GTFS_STOPS_FIELDS_TO_DISPLAY,
 
+GTFS_STOPS_FIELDS_TO_DISPLAY_CLUSTERING = [
+    "clustering_id",
+    *GTFS_STOPS_FIELDS_TO_DISPLAY_BASE,
 ]
-#GTFS_ALIASES = ["Agency ID", "Agency Name", "Stop ID", "Stop Name", "Primary Mode", "Headway", "Score"]
+
+GTFS_STOPS_FIELDS_TO_DISPLAY_NO_CLUSTERING = [
+    "stop_id_unique",
+    *GTFS_STOPS_FIELDS_TO_DISPLAY_BASE
+]
+GTFS_ALIASES = ["Stop ID", "Minimum Headway (one direction)", "Total Frequency (all directions)", "Transfer?", "Mode", "Mode Classification"]
 
 @dataclass
 class DownloadResponse:
@@ -77,9 +80,9 @@ class GTFSDataObject(SpatialDataObject):
         gtfs_cache_life: dt.timedelta = dt.timedelta(days=7),
         gtfs_override_feeds_path: None | str | pathlib.Path = None,
         download_transitland_first: bool = True,
-        network_config: dict = {},
         load_from_cache: bool = True,
         save_to_cache:bool = True,
+        **network_config
     ) -> None:
         self.local_crs = local_crs
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
@@ -98,6 +101,7 @@ class GTFSDataObject(SpatialDataObject):
         self.load_from_cache = load_from_cache
         self.save_to_cache = save_to_cache
         self.network_config = network_config
+        self.clustering_enabled = True if (CONFIG_CLUSTERING_ENABLED not in network_config) else network_config[CONFIG_CLUSTERING_ENABLED]
 
     async def load_data(
         self,
@@ -145,7 +149,7 @@ class GTFSDataObject(SpatialDataObject):
             self._set_is_loaded()
             return
 
-        network = TransitNetwork(config=self.network_config)
+        network = TransitNetwork(config=self.network_config, local_crs=self.local_crs)
         for feed_metadata in transitland_feeds:
             feed_id = feed_metadata["onestop_id"]
             print(f"INFO: Processing {feed_id}")
@@ -214,19 +218,22 @@ class GTFSDataObject(SpatialDataObject):
 
             # Add the feed to the network
             network.add_feed(feed_object)
-        gdf_stop_locations = network.gdf_stops.copy()
+        if self.clustering_enabled:
+            gdf_stop_locations = network.gdf_stops_clustered
+        else:
+            gdf_stop_locations = network.gdf_stops
         self._network = network
         #df_route_summary = network.get_summary_routes_df()
-        gdf_stop_locations["min_overlap_headway"] = network.get_weighted_headways_by_stop_overlap().groupby(level=0).min()
-        gdf_stop_locations["total_frequency"] = network.get_weighted_frequencies_by_stop_overlap().groupby(level=0).max()
-        gdf_stop_locations["transfer"] = network.get_transfer_status()
-        gdf_stop_locations["mode"] = network.get_mode()
-        gdf_stop_locations["mode_classification"] = network.get_mode_classification()
+        gdf_stop_locations["min_overlap_headway"] = network.weighted_headways_by_stop_overlap.groupby(level=0).min()
+        gdf_stop_locations["total_frequency"] = network.weighted_frequencies_by_stop_overlap.groupby(level=0).sum()
+        gdf_stop_locations["transfer"] = network.transfer_status
+        gdf_stop_locations["mode"] = network.mode_by_stop
+        gdf_stop_locations["mode_classification"] = network.mode_classification_by_stop
         
         self.df_feeds_metadata = df_feeds_metadata
         # Save the stops, excluding any that do not have service associated with them
         #TODO: there should be a funciton to perform this filter in TransitNetwork
-        self.gdf = gdf_stop_locations.dropna(subset=["mode"])
+        self.gdf = gdf_stop_locations#.dropna(subset=["mode"])
         gdf_stop_locations_saveable = self._make_safe_for_geojson(self.gdf)
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
@@ -240,14 +247,15 @@ class GTFSDataObject(SpatialDataObject):
         raise NotImplementedError
 
     def get_folium_plot(self) -> folium.GeoJson:
+        fields_to_display = GTFS_STOPS_FIELDS_TO_DISPLAY_CLUSTERING if self.clustering_enabled else GTFS_STOPS_FIELDS_TO_DISPLAY_NO_CLUSTERING
         gtfs_popup = folium.GeoJsonPopup(
-            fields=GTFS_STOPS_FIELDS_TO_DISPLAY,
-            #aliases=GTFS_ALIASES,
+            fields=fields_to_display,
+            aliases=GTFS_ALIASES,
         )
         gdf_safe = self._make_safe_for_geojson(self.gdf)
         gtfs_geojson = folium.GeoJson(
             gdf_safe.reset_index()[
-                [*GTFS_STOPS_FIELDS_TO_DISPLAY, self.gdf.geometry.name]
+                [*fields_to_display, self.gdf.geometry.name]
             ],
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
@@ -258,9 +266,8 @@ class GTFSDataObject(SpatialDataObject):
         return gtfs_geojson
 
     async def _download_feed(self, feed_id, feed_url, df_override_feeds):
+        #TODO: implement df_override_feeds to load a cached feed if it is not available from TransitLand
         feed_output_path = self.gtfs_cache_path / f"gtfs_{feed_id}.zip"
-        #if feed_id in df_override_feeds.index:
-        #    feed_output_path = self.gtfs_cache_path / df_override_feeds.loc[feed_id, "path"])
         # Download the feed
         try:
             sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
@@ -384,10 +391,10 @@ class GTFSDataObject(SpatialDataObject):
     def _convert_from_geojson(gdf):
         gdf_copy = gdf.copy()
         gdf_copy["mode"] = gdf_copy["mode"].map(
-            lambda x: np.nan if x == NO_MODE else Mode(x)
+            lambda x: np.nan if x == NO_MODE or safe_is_na(x) else Mode(x)
         )
         gdf_copy["mode_classification"] = gdf_copy["mode_classification"].map(
-            lambda x: np.nan if x == NO_MODE else ModeClassification(x)
+            lambda x: np.nan if x == NO_MODE or safe_is_na(x) else ModeClassification(x)
         )
         gdf_copy["transfer"] = gdf_copy["transfer"].map({
             1: True,

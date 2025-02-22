@@ -8,9 +8,7 @@ import traceback
 
 from MobilityHubDataObjects.transitWrappers.constants import GTFS_ROUTE_TYPE_TO_ID_MAP
 from MobilityHubDataObjects.constants import GEODESIC_CRS
-from MobilityHubDataObjects.transitWrappers.TransitNetwork import MIN_TRIPS
-from MobilityHubDataObjects.transitWrappers.constants import ROUTE_PRIORITY_MAP
-from MobilityHubDataObjects.utils import safe_is_na, time_to_int, transform_shapely_geometry
+from MobilityHubDataObjects.utils import transform_shapely_geometry
 
 
 class FeedWrapper:

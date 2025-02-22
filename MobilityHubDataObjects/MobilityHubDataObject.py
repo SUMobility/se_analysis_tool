@@ -43,8 +43,28 @@ USED_BASE_LAYER_METRICS = [
 MIN_JOB_DENSITY = 1
 POINT_BUFFER_RADIUS = 500
 
-OUTPUT_COLUMNS = ["od_type", "trunk_branch_type",  "od_score", "investment_score","mode", "min_overlap_headway", "total_frequency", "adjusted_headway", "transfer", "Population Density (people/acre)"]
-OUTPUT_NAMES = ["Is Destination?", "Is Trunk?" "OD Score", "Investment Score", "Mode", "Best Headway", "Total Frequency", "Adjusted Headway", "Is Transfer?"]
+OUTPUT_COLUMNS = [
+    "od_type", 
+    "trunk_branch_type",
+    "od_score", 
+    "investment_score",
+    "mode", 
+    "min_overlap_headway", 
+    "total_frequency", 
+    "adjusted_headway",
+    "transfer",
+]
+OUTPUT_NAMES = [
+    "Origin / Destination?", 
+    "Trunk / Branch?",
+    "OD Score",
+    "Investment Score", 
+    "Mode", 
+    "Best Headway", 
+    "Total Frequency",
+    "Adjusted Headway",
+    "Is Transfer?"
+]
 
 class MobilityHubDataObject(SpatialDataObject):
     def __init__(self, transit_stop_data_object, base_layer: BaseLayer, local_crs, **classifier_config):
@@ -79,12 +99,12 @@ class MobilityHubDataObject(SpatialDataObject):
         gdf_merged_transit_stops["geometry"] = gdf_merged_transit_stops.geometry
         gdf_merged_transit_stops.geometry = gdf_merged_transit_stops["geometry"]
         print(gdf_merged_transit_stops.columns)
-        self.gdf = gdf_merged_transit_stops[[*OUTPUT_COLUMNS, "geometry"]]
+        self.gdf = gdf_merged_transit_stops[[*OUTPUT_COLUMNS, gdf_merged_transit_stops.geometry.name]]
         self._set_is_loaded()
     
     def get_folium_plot(self):
         popup = folium.GeoJsonPopup(
-            fields=OUTPUT_COLUMNS,# aliases=OUTPUT_NAMES
+            fields=OUTPUT_COLUMNS, aliases=OUTPUT_NAMES
         )
 
         def get_color(is_destination, trunk_branch_type):
@@ -98,7 +118,7 @@ class MobilityHubDataObject(SpatialDataObject):
                 return "#ff00ee"
             if not is_destination and trunk_branch_type == StopClassification.BRANCH.value:
                 return "#ffb0fa"
-        gdf_to_display = self.gdf.copy()
+        gdf_to_display = self.gdf.to_crs(GEODESIC_CRS).dropna(subset=["mode"])
         gdf_to_display[["mode", "trunk_branch_type"]] = gdf_to_display[["mode", "trunk_branch_type"]].map(lambda x: x.value)
         return folium.GeoJson(
             gdf_to_display,
@@ -260,17 +280,3 @@ def assign_base_layer_vars_to_points(gdf_base, gdf_points, base_vars, radius, pr
         gdf_base_values_on_points, on="unique_id", how="left", validate="one_to_one"
     ).set_index(gdf_points.index, drop=True)
     return gdf_merged
-
-    gdf_merged = gdf_points_to_merge.sjoin(
-        gdf_base[[*base_vars, gdf_base.geometry.name]].to_crs(projected_crs).copy(),
-        how="left",
-        predicate="intersects"
-    )
-    original_len = len(gdf_merged)
-    gdf_dropped = gdf_merged.drop_duplicates(
-        subset=["original_index"], keep="first"
-    ).set_index(
-        "original_index"
-    ).sort_index()
-    print(f"TEST: {original_len - len(gdf_dropped)}")
-    return gdf_dropped
