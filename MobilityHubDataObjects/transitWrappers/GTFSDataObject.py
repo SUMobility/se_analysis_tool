@@ -53,7 +53,14 @@ GTFS_STOPS_FIELDS_TO_DISPLAY_NO_CLUSTERING = [
     "stop_id_unique",
     *GTFS_STOPS_FIELDS_TO_DISPLAY_BASE
 ]
-GTFS_ALIASES = ["Stop ID", "Minimum Headway (one direction)", "Total Frequency (all directions)", "Transfer?", "Mode", "Mode Classification"]
+GTFS_ALIASES = [
+    "Stop ID", 
+    "Minimum Headway (one direction)", 
+    "Total Frequency (all directions)", 
+    "Transfer?", 
+    "Mode", 
+    "Mode Classification"
+]
 
 @dataclass
 class DownloadResponse:
@@ -84,6 +91,23 @@ class GTFSDataObject(SpatialDataObject):
         save_to_cache:bool = True,
         **network_config
     ) -> None:
+        """
+        A DataObject with points representing transit stops. Loads feeds from TransitLand and processes them with other library functions
+
+        :param local_crs: An EPSG number representing a projected CRS that has units in meters and is valid for the area to be loaded
+        :param gtfs_cache_path: A path to a folder for saving GTFS feeds and processed data
+        :param transitland_url: An API to the Transitland V2 feeds api. 
+            See https://www.transit.land/documentation/rest-api/feeds
+        :param api_key_path: A path to a file containing a Transitland/Interline api key.
+            See https://www.transit.land/documentation#signing-up-for-an-api-key
+        :param gtfs_cache_life: A timedelta cotaining the length to save cached stops for, default is 7 days
+        :param download_transitland_first: Whether to try using Transitland to download a feed over simulating a browser page with Playwright if the initial attempt to download a feed fails
+            Defaults to True, which will speed loading and avoid any issues with working against protections against automated downloading, 
+            but increases API calls and may lead to downloading outdated feeds in certain cases
+        :param load_from_cache: Whether to attempt to load cached stops and metadata, defaults to True. Will not check if configuration matches the cached files
+        :param save_to_cache: Whether to save stop locations, stop metadata, and feed metadata to the cache, defaults to True
+        :param network_config: Any config to pass to TransitNetwork. See readme for a complete list
+        """
         self.local_crs = local_crs
         self.gtfs_cache_path = pathlib.Path(gtfs_cache_path).resolve()
         if gtfs_override_feeds_path is not None:
@@ -108,6 +132,7 @@ class GTFSDataObject(SpatialDataObject):
         load_area: (shapely.MultiPolygon | shapely.Polygon),
         load_area_crs: int
     ) -> None:
+        """Loads the data object for the area defined by load_area with the provided EPSG crs"""
         pd.set_option('future.no_silent_downcasting', True)
         load_area_transformed = transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area)
         # Query Transitland
@@ -247,6 +272,7 @@ class GTFSDataObject(SpatialDataObject):
         raise NotImplementedError
 
     def get_folium_plot(self) -> folium.GeoJson:
+        """Get a folium geojson object"""
         fields_to_display = GTFS_STOPS_FIELDS_TO_DISPLAY_CLUSTERING if self.clustering_enabled else GTFS_STOPS_FIELDS_TO_DISPLAY_NO_CLUSTERING
         gtfs_popup = folium.GeoJsonPopup(
             fields=fields_to_display,
@@ -381,9 +407,9 @@ class GTFSDataObject(SpatialDataObject):
         gdf_copy[["mode", "mode_classification"]] = gdf_copy[
             ["mode", "mode_classification"]
         ].map(lambda x: NO_MODE if safe_is_na(x) else  x.value)
-        gdf_copy["transfer"] = gdf_copy["transfer"].fillna(-1).map({
-            True: 1,
-            False: 0,
+        gdf_copy["transfer"] = gdf_copy["transfer"].fillna("NA").map({
+            True: "True",
+            False: "False",
         })
         return gdf_copy
     
@@ -397,9 +423,9 @@ class GTFSDataObject(SpatialDataObject):
             lambda x: np.nan if x == NO_MODE or safe_is_na(x) else ModeClassification(x)
         )
         gdf_copy["transfer"] = gdf_copy["transfer"].map({
-            1: True,
-            0: False,
-            -1: np.nan
+            "True": True,
+            "False": False,
+            "NA": np.nan
         })
         return gdf_copy
 

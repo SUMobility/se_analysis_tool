@@ -9,7 +9,7 @@ from MobilityHubDataObjects import BaseLayer, SpatialDataObject
 from MobilityHubDataObjects.BaseLayer.constants import *
 from scipy.stats import percentileofscore
 
-from MobilityHubDataObjects.constants import GEODESIC_CRS, StopClassification
+from MobilityHubDataObjects.constants import GEODESIC_CRS, LocalDestinationClassification, TrunkBranchClassification
 from MobilityHubDataObjects.transitWrappers.constants import HIGH_COMFORT_MODES, ModeClassification
 from MobilityHubDataObjects.utils import basic_circle_marker, get_quantile_ranking_series, transform_shapely_geometry
 
@@ -45,25 +45,21 @@ POINT_BUFFER_RADIUS = 500
 
 OUTPUT_COLUMNS = [
     "od_type", 
-    "trunk_branch_type",
     "od_score", 
-    "investment_score",
+    "trunk_branch_type",
     "mode", 
-    "min_overlap_headway", 
-    "total_frequency", 
     "adjusted_headway",
+    "total_frequency", 
     "transfer",
 ]
 OUTPUT_NAMES = [
-    "Origin / Destination?", 
+    "Origin / Local?",
+    "Origin / Local Score",
     "Trunk / Branch?",
-    "OD Score",
-    "Investment Score", 
     "Mode", 
-    "Best Headway", 
-    "Total Frequency",
-    "Adjusted Headway",
-    "Is Transfer?"
+    "Minimum Headway (one direction)", 
+    "Total Frequency (all directions)", 
+    "Transfer"
 ]
 
 class MobilityHubDataObject(SpatialDataObject):
@@ -92,13 +88,12 @@ class MobilityHubDataObject(SpatialDataObject):
         )
 
         gdf_merged_transit_stops["od_score"] = self._generate_od_score(gdf_merged_transit_stops)
-        gdf_merged_transit_stops["od_type"] = get_quantile_ranking_series(gdf_merged_transit_stops["od_score"]) > 0.8
+        gdf_merged_transit_stops["od_type"] = self._classify_od(gdf_merged_transit_stops["od_score"])
         gdf_merged_transit_stops["trunk_branch_type"] = self._classify_trunk_branch(gdf_merged_transit_stops)
         gdf_merged_transit_stops["investment_score"] = np.nan
         # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
         gdf_merged_transit_stops["geometry"] = gdf_merged_transit_stops.geometry
         gdf_merged_transit_stops.geometry = gdf_merged_transit_stops["geometry"]
-        print(gdf_merged_transit_stops.columns)
         self.gdf = gdf_merged_transit_stops[[*OUTPUT_COLUMNS, gdf_merged_transit_stops.geometry.name]]
         self._set_is_loaded()
     
@@ -107,19 +102,19 @@ class MobilityHubDataObject(SpatialDataObject):
             fields=OUTPUT_COLUMNS, aliases=OUTPUT_NAMES
         )
 
-        def get_color(is_destination, trunk_branch_type):
-            if trunk_branch_type == StopClassification.NOT_MOBILITY_HUB.value:
+        def get_color(od_type, trunk_branch_type):
+            if trunk_branch_type == TrunkBranchClassification.NOT_MOBILITY_HUB.value:
                 return "#c2c2c2"
-            if is_destination and trunk_branch_type == StopClassification.TRUNK.value:
+            if od_type == LocalDestinationClassification.DESTINATION.value and trunk_branch_type == TrunkBranchClassification.TRUNK.value:
                 return "#0000ff"
-            if is_destination and trunk_branch_type == StopClassification.BRANCH.value:
+            if od_type == LocalDestinationClassification.DESTINATION.value and trunk_branch_type == TrunkBranchClassification.BRANCH.value:
                 return "#00bfff"
-            if not is_destination and trunk_branch_type == StopClassification.TRUNK.value:
+            if od_type == LocalDestinationClassification.LOCAL.value and trunk_branch_type == TrunkBranchClassification.TRUNK.value:
                 return "#ff00ee"
-            if not is_destination and trunk_branch_type == StopClassification.BRANCH.value:
+            if od_type == LocalDestinationClassification.LOCAL.value and trunk_branch_type == TrunkBranchClassification.BRANCH.value:
                 return "#ffb0fa"
         gdf_to_display = self.gdf.to_crs(GEODESIC_CRS).dropna(subset=["mode"])
-        gdf_to_display[["mode", "trunk_branch_type"]] = gdf_to_display[["mode", "trunk_branch_type"]].map(lambda x: x.value)
+        gdf_to_display[["mode", "od_type", "trunk_branch_type"]] = gdf_to_display[["mode", "od_type", "trunk_branch_type"]].map(lambda x: x.value)
         return folium.GeoJson(
             gdf_to_display,
             marker=basic_circle_marker("black"),
@@ -129,10 +124,12 @@ class MobilityHubDataObject(SpatialDataObject):
             popup=popup
         )
 
-    def get_score_decay_function(self):
-        raise NotImplementedError()
-    def get_scores(self):
-        raise NotImplementedError()
+    @staticmethod
+    def _classify_od(od_scores):
+        return (get_quantile_ranking_series(od_scores) > 0.8).map({
+            True: LocalDestinationClassification.DESTINATION,
+            False: LocalDestinationClassification.LOCAL
+        })
 
     @staticmethod
     def _generate_od_score(gdf_merged_points):
@@ -176,9 +173,6 @@ class MobilityHubDataObject(SpatialDataObject):
         trunk_headway_quantile_value = np.quantile(
             headway_array, self.classifier_config[CONFIG_OVERLAP_HEADWAY_TRUNK_QUANTILE_BUS]
         )
-        print("quantile values", self.classifier_config[CONFIG_OVERLAP_HEADWAY_MOBILITY_HUB_QUANTILE_BUS], self.classifier_config[CONFIG_OVERLAP_HEADWAY_TRUNK_QUANTILE_BUS])
-        print(headway_array)
-        print("quantile values", mh_headway_quantile_value, trunk_headway_quantile_value)
         gdf_stops_copy["classification"] = np.nan
         gdf_stops_copy["mh_from_mode"] = gdf_stops_copy["mode_classification"] == ModeClassification.HIGH_COMFORT
         gdf_stops_copy["mh_from_absolute_headway"] = (
@@ -201,7 +195,7 @@ class MobilityHubDataObject(SpatialDataObject):
         )
         gdf_stops_copy["classification"] = gdf_stops_copy["is_mh"].replace(
             to_replace=[True, False],
-            value=[np.nan, StopClassification.NOT_MOBILITY_HUB]
+            value=[np.nan, TrunkBranchClassification.NOT_MOBILITY_HUB]
         )
         gdf_stops_mobility_hub_only_high_comfort = gdf_stops_copy.loc[
             gdf_stops_copy["mh_from_mode"] & gdf_stops_copy["is_mh"], []
@@ -252,7 +246,7 @@ class MobilityHubDataObject(SpatialDataObject):
         gdf_stops_with_classification["classification"] = gdf_stops_with_classification["classification"].fillna(
             gdf_stops_mobility_hub["is_trunk"].replace(
                 to_replace=[True, False],
-                value=[StopClassification.TRUNK, StopClassification.BRANCH]
+                value=[TrunkBranchClassification.TRUNK, TrunkBranchClassification.BRANCH]
             )
         )
         return gdf_stops_with_classification["classification"].copy()
@@ -272,7 +266,6 @@ def assign_base_layer_vars_to_points(gdf_base, gdf_points, base_vars, radius, pr
         how="intersection"
     )
     proportion = gdf_overlayed.area.div(buffer_area)
-    print(proportion)
     gdf_overlayed[base_vars] = gdf_overlayed[base_vars].mul(proportion, axis=0)
     gdf_base_values_on_points = gdf_overlayed.groupby("unique_id")[base_vars].sum()
     assert gdf_points.index.size == gdf_base_values_on_points.index.size

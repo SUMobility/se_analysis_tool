@@ -9,10 +9,12 @@ import shapely
 from libpysal.graph import Graph
 import networkx as nx
 
-from MobilityHubDataObjects.transitWrappers.constants import ARBITRARY_DATE, CONFIG_CLUSTERING_DISTANCE_BUS_TO_BUS, CONFIG_CLUSTERING_DISTANCE_BUS_TO_HIGH_COMFORT, CONFIG_CLUSTERING_DISTANCE_HIGH_COMFORT_TO_HIGH_COMFORT, CONFIG_CLUSTERING_DISTANCE_SAME_ROUTE, CONFIG_CLUSTERING_ENABLED, CONFIG_EVENING_PEAK_END, CONFIG_EVENING_PEAK_START, CONFIG_HEADWAY_PERCENTILE, CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY, CONFIG_MORNING_PEAK_END, CONFIG_MORNING_PEAK_START, CONFIG_OFF_PEAK_END, CONFIG_OFF_PEAK_START, CONFIG_PEAK_WEIGHT, DEFAULT_FEED_CONFIG, PERIOD_EVENING_PEAK_NAME, PERIOD_MORNING_PEAK_NAME, PERIOD_OFF_PEAK_NAME, ROUTE_PRIORITY_MAP
+from MobilityHubDataObjects.transitWrappers.DEFAULT_FEED_CONFIG import DEFAULT_FEED_CONFIG
+from MobilityHubDataObjects.transitWrappers.constants import ARBITRARY_DATE, CONFIG_CLUSTERING_DISTANCE_BUS_TO_BUS, CONFIG_CLUSTERING_DISTANCE_BUS_TO_HIGH_COMFORT, CONFIG_CLUSTERING_DISTANCE_HIGH_COMFORT_TO_HIGH_COMFORT, CONFIG_CLUSTERING_DISTANCE_SAME_ROUTE, CONFIG_CLUSTERING_ENABLED, CONFIG_EVENING_PEAK_END, CONFIG_EVENING_PEAK_START, CONFIG_HEADWAY_PERCENTILE, CONFIG_MIN_TRIPS, CONFIG_MORNING_PEAK_END, CONFIG_MORNING_PEAK_START, CONFIG_OFF_PEAK_END, CONFIG_OFF_PEAK_START, CONFIG_PEAK_WEIGHT, PERIOD_EVENING_PEAK_NAME, PERIOD_MORNING_PEAK_NAME, PERIOD_OFF_PEAK_NAME, ROUTE_PRIORITY_MAP
 from MobilityHubDataObjects.constants import GEODESIC_CRS
 from MobilityHubDataObjects.transitWrappers import FeedWrapper
 from MobilityHubDataObjects.transitWrappers.constants import MODE_CLASSIFICATION_MAP, ModeClassification
+from MobilityHubDataObjects.transitWrappers.utils import concatenate_id_lists
 from MobilityHubDataObjects.utils import safe_is_na, time_to_int
 
 #TODO: describe this in the readme
@@ -35,13 +37,16 @@ class TransitNetwork:
     _df_service_patterns = pd.DataFrame()
 
     def __init__ (self, local_crs, feeds: Iterable[FeedWrapper]=[], config={}):
-        config_to_use = dict(config)
-        for key in DEFAULT_FEED_CONFIG:
-            if key not in config:
-                config_to_use[key] = DEFAULT_FEED_CONFIG[key]
+        """
+        An object representing a Transit Network, containing one or more GTFS feeds
+
+        :param local_crs: An EPSG number representing a projected CRS that is valid within the network's area
+        :param feeds: An iterable of feeds to add to the network. Defaults to an empty list, in which case no feeds will be present
+        :param config: Configuration values, see readme
+        """
+        config_to_use = {**DEFAULT_FEED_CONFIG, **config}
         self.config = config_to_use
         # Define periods from config
-        #TODO: make this more configurable, period times and whether they are "peak" should be configurable
         self.morning_peak = Period(
             PERIOD_MORNING_PEAK_NAME, self.config[CONFIG_MORNING_PEAK_START], self.config[CONFIG_MORNING_PEAK_END]
         )
@@ -61,7 +66,7 @@ class TransitNetwork:
         self._clusters_generated = False
         self._overlap_groups_generated = False
         self._route_groups_generated = False
-        self.min_trips = self.config[CONFIG_MIN_TRIPS_TO_CALCULATE_HEADWAY]
+        self.min_trips = self.config[CONFIG_MIN_TRIPS]
         self.peak_weight = self.config[CONFIG_PEAK_WEIGHT]
         self.percentile = self.config[CONFIG_HEADWAY_PERCENTILE]
         self.clustering_enabled = self.config[CONFIG_CLUSTERING_ENABLED]
@@ -72,10 +77,12 @@ class TransitNetwork:
 
     @property
     def gdf_stops(self):
+        """A GeoDataFrame containing unclustered stops. See schema for details"""
         return self._gdf_stops.copy()
     
     @property
     def gdf_stops_clustered(self):
+        """A GeoDataFrame containing clustered stops. See schema for details"""
         if not self.clustering_enabled:
             raise RuntimeError("Clustering is disabled for this network")
         self._create_stop_clusters_lazily()
@@ -83,10 +90,12 @@ class TransitNetwork:
 
     @property
     def df_routes(self):
+        """A DataFrame containing routes. See schema for details"""
         return self._df_routes.copy()
     
     @property
     def df_stop_times(self):
+        """A DataFrame containing an entry for each stop/trip pair. See schema for details"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
             return self._df_stop_times_clustered.copy()
@@ -94,10 +103,12 @@ class TransitNetwork:
     
     @property
     def df_service_patterns(self):
+        """A DataFrame containing an entry for each service pattern. See schema for details"""
         return self._df_service_patterns.copy()
 
     @property
     def df_stop_graph(self):
+        """A DataFrame representing each stop/service pattern combination. See schema for details"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
             return self._df_stop_graph_clustered
@@ -106,6 +117,7 @@ class TransitNetwork:
 
     @property
     def df_overlapping_service_patterns(self):
+        """A DataFrame representing each set of overlapping service patterns at a particular stop. See schema for details"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
             return self._df_overlapping_service_patterns_clustered
@@ -113,6 +125,7 @@ class TransitNetwork:
         return self._df_overlapping_service_patterns
 
     def add_feed(self, feed: FeedWrapper):
+        """Add the specified feed to the network. Currently quite slow"""
         assert feed.feed_loaded
         feed_id = feed.id
 
@@ -207,7 +220,7 @@ class TransitNetwork:
 
     @property
     def weighted_headways_by_stop_overlap(self):
-        #TODO: figure out why weighted headway and frequency is being calculated wrong
+        """A DataFrame of weighted headways for each overlap of service patterns at each stop"""
         headway_group_function = lambda group: self._get_headways_for_group_helper(
             group, self.percentile
         )
@@ -228,6 +241,7 @@ class TransitNetwork:
 
     @property
     def weighted_frequencies_by_stop_overlap(self):
+        """A DataFrame of weighted frequencies for each overlap of service patterns at each stop"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
         overlap_groups = self._get_overlap_groups_lazily()
@@ -265,6 +279,7 @@ class TransitNetwork:
         return self.overlap_groups
 
     def get_summary_routes_df(self):
+        """Get a DataFrame containing headways and frequencies at each stop"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
         else:
@@ -303,6 +318,7 @@ class TransitNetwork:
         return df_route_summary
 
     def get_headways_by_route(self, period, percentile):
+        """Get headways based on the provided period and percentile for each route at each stop"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
         else:
@@ -310,7 +326,8 @@ class TransitNetwork:
         group_in_period = self._get_stop_times_grouped_by_routes(period)
         return self._get_headways_for_group_helper(group_in_period, percentile)
 
-    def get_headways_by_overlap(self, period, percentile, min_trips=None): #TODO: this shouldn't be 1 by default
+    def get_headways_by_overlap(self, period, percentile, min_trips=None):
+        """Get headways based on the provided period and percentile for each set of overlapping service patterns at each stop"""
         min_trips = min_trips if min_trips is not None else self.min_trips
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
@@ -320,6 +337,7 @@ class TransitNetwork:
         return self._get_headways_for_group_helper(group_in_period, percentile)
     
     def get_frequencies_by_route(self, period):
+        """Get frequencies based on the provided period for each route at each stop"""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
         else:
@@ -327,7 +345,9 @@ class TransitNetwork:
         group_in_period = self._get_stop_times_grouped_by_routes(period)
         return self._get_frequencies_for_group_helper(group_in_period, period)
     
-    def get_frequencies_by_overlap(self, period, min_trips=1): #TODO: this shouldn't be 1 by default
+    def get_frequencies_by_overlap(self, period, min_trips=None): #TODO: this shouldn't be 1 by default
+        """Get frequencies based on the provided period for each set of overlapping service patterns at each stop"""
+        min_trips = min_trips if min_trips is not None else self.min_trips
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
         else:
@@ -337,18 +357,21 @@ class TransitNetwork:
 
     @property
     def transfer_status(self):
+        """A boolean Series indexed by stop id, with True values for transfer stops and False values for non-transfer stops."""
         if self.clustering_enabled:
             self._create_stop_clusters_lazily()
         else:
             self._create_route_graph_lazily()
+        min_patterns_for_transfer = 3 if self.clustering_enabled else 2
         is_transfer = (
-            (self.df_stop_graph.groupby("stop_id_unique")["next_stop"].nunique(dropna=True) > 2)
+            (self.df_stop_graph.groupby("stop_id_unique")["next_stop"].nunique(dropna=True) >= min_patterns_for_transfer)
             | self.df_stop_graph.groupby("stop_id_unique")[["last_stop", "first_stop"]].any().any(axis=1)
         ).fillna(False)
         return is_transfer
     
     @property
     def mode_by_stop(self):
+        """A series indexed by stop ids containing the mode for each stop"""
         stop_ids_with_service_patterns = self.df_stop_times.index.get_level_values(
             "stop_id_unique"
         ).drop_duplicates()
@@ -364,7 +387,8 @@ class TransitNetwork:
         return primary_mode_by_stop
 
     @property
-    def mode_classification_by_stop(self): #TODO: just make this the whole _get_mode_for_stop_ids function
+    def mode_classification_by_stop(self):
+        """A series indexed by stop ids containing the mode classification for each stop (bus, high comfort, other)"""
         return self._get_mode_classification_by_stop()
 
     def _get_mode_classification_by_stop(self, cluster_if_enabled=True):
@@ -1022,7 +1046,7 @@ class TransitNetwork:
         return stop_times_grouped
 
     def _get_headways_for_group_helper(self, stop_times_grouped, percentile):
-        headway_function = get_headway_function(percentile)
+        headway_function = self.get_headway_function(percentile)
         headway_seconds = stop_times_grouped.apply(headway_function)
         headway_minutes = headway_seconds / 60.
         return headway_minutes
@@ -1031,7 +1055,7 @@ class TransitNetwork:
         time_series_length = (
             dt.datetime.combine(ARBITRARY_DATE, period.end) - dt.datetime.combine(ARBITRARY_DATE, period.start)
         )
-        frequency_function = get_frequency_function(time_series_length)
+        frequency_function = self.get_frequency_function(time_series_length)
         frequencies = stop_times_grouped.apply(frequency_function)
         return frequencies
 
@@ -1074,33 +1098,24 @@ class TransitNetwork:
     @staticmethod
     def _transform_stop_ids(feed_id, stop_ids):
         return concatenate_id_lists(feed_id, stop_ids)
-    
-# move to utils
-def rename_dict_keys(original_dict, key_mapping):
-    renamed_dict = {}
-    for key, value in original_dict.items():
-        renamed_dict[key_mapping.get(key, key)] = value
-    return renamed_dict
 
-def concatenate_id_lists(prefix, original_ids):
-    return [
-        f"{prefix}_{original_id}" if not safe_is_na(original_id) else np.nan 
-        for original_id in original_ids
-    ]
+    @staticmethod    
+    def get_headway_function(percentile):
+        return lambda time_series: TransitNetwork.get_headway(time_series, percentile)
 
-def get_headway_function(percentile):
-    return lambda time_series: get_headway(time_series, percentile)
+    @staticmethod
+    def get_headway(time_series, percentile):
+        headways = (time_series.shift(-1) - time_series).to_numpy()
+        if headways.size == 0 or (headways.size == 1 and np.isnan(headways[0])):
+            return np.nan
+        return np.percentile(
+            headways[:-1], percentile
+        )
 
-def get_headway(time_series, percentile):
-    headways = (time_series.shift(-1) - time_series).to_numpy()
-    if headways.size == 0 or (headways.size == 1 and np.isnan(headways[0])):
-        return np.nan
-    return np.percentile(
-        headways[:-1], percentile
-    )
+    @staticmethod
+    def get_frequency_function(period_length):
+        return lambda time_series: TransitNetwork.get_frequency(time_series, period_length)
 
-def get_frequency_function(period_length):
-    return lambda time_series: get_frequency(time_series, period_length)
-
-def get_frequency(time_series: pd.Series, period_length: dt.timedelta):
-    return time_series.count() / (period_length.seconds / 3600.)
+    @staticmethod
+    def get_frequency(time_series: pd.Series, period_length: dt.timedelta):
+        return time_series.count() / (period_length.seconds / 3600.)

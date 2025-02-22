@@ -25,6 +25,16 @@ class FeedWrapper:
             filter_area_crs,
             min_trips: int
         ):
+        """
+        A wrapper for a GTFS feed that loads feeds with partridge and extracts service patterns.
+        Currently quite slow to load, and does some really messy stuff with tuples in dataframes
+
+        :param feed_path: A path to GTFS feed, as a zip
+        :param feed_id: An arbitrary id to assign to a feed
+        :param filter_area: The area in which to filter the feed
+        :param filter_area_crs: The EPSG code for the CRS of filter_area. Does not need to be a proejcted CRS
+        :param min_trips: The minimum number of trips required to save a service pattern
+        """
         self.path = pathlib.Path(feed_path).resolve()
         self.id = feed_id
         # Helper functions for printing exceptions 
@@ -108,6 +118,7 @@ class FeedWrapper:
         print("feed loaded")
     
     def get_agency_name(self) -> str | float:
+        """Get the name of the agency if it is unique. Returns an ambiguous response if the feed contains multiple agencies"""
         #TODO: need to make agency name a route field not an overall field
         if not self.feed_loaded:
             return self._print_feed_not_loaded_error()
@@ -117,25 +128,23 @@ class FeedWrapper:
             return "Agency has Multiple Names"
     
     def get_agency_url(self) -> str:
-        #TODO: need to make agency name a route field not an overall field
+        """Get the url of the agency if it is unique. Returns an ambiguous response if the feed contains multiple agencies"""
         if not self.feed_loaded:
             return self._print_feed_not_loaded_error()
         if self.feed.agency.index.size == 1:
             return self.feed.agency.agency_url.iloc[0]
         else:
             return "Agency has multiple URLs"
-
-    def get_last_valid_date(self):
-        #TODO: implement
-        raise NotImplementedError()
     
     def get_feed_loaded_correctly(self):
+        """Return True if the feed is currently loaded, and False if it is not"""
         return self.feed_loaded
 
     def get_routes_serving_stop(
         self,
         stop_id,
     ):
+        """Returns two tuples with the 0th containing route ids and the 1st containing direction ids serving the provided stop_id"""
         trip_ids_serving_stop = self.feed.stop_times.loc[self.feed.stop_times.stop_id == stop_id, "trip_id"]
         id_columns = ("route_id",)
         has_direction_id = False
@@ -155,7 +164,7 @@ class FeedWrapper:
         return route_direction_pair
 
     def get_service_patterns_for_route(self, route_id):
-        # Validate that a valid route id has been chosen
+        """Get all service patterns for the specified route id"""
         if route_id not in self.df_routes.index:
             raise KeyError(f"Route {route_id} is not present in feed")
         return self.df_service_patterns.index.loc[self.df_service_patterns["route_id"] == route_id]

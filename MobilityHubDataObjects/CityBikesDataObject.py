@@ -6,7 +6,6 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 from MobilityHubDataObjects import SpatialDataObject, constants
-from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
 from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, filter_two_corresponding_arrays, transform_shapely_geometry
 
 COUNTRY_CODE_US = "US"
@@ -70,12 +69,6 @@ class CityBikesDataObject(SpatialDataObject):
             gdf_citybikes_stations_to_save[CITYBIKES_FIELDS],
             geometry=gdf_citybikes_stations_to_save.geometry)
         self._set_is_loaded()
-
-    def get_scores(self) -> pd.Series:
-        return self._get_scores_from_function(lambda x: (2 if x else 0) + 5, ["has_ebikes"])
-
-    def get_score_decay_function(self) -> Callable[[float], float]:
-        return get_linear_decay_function(500) 
 
     def get_folium_plot(self) -> GeoJson:
         fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, CITYBIKES_FIELDS, CITYBIKES_ALIASES)

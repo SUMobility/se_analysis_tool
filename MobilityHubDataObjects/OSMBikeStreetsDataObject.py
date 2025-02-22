@@ -127,9 +127,3 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
                 "weight": 4,
             }
         ) 
-    
-    def get_score_decay_function(self) -> Callable[[float], float]:
-        raise NotImplementedError()
-    
-    def get_scores(self) -> pd.Series:
-        raise NotImplementedError()

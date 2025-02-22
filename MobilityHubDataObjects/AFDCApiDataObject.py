@@ -1,11 +1,6 @@
 from typing import Callable
-
 import pandas as pd
-
-from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
-from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, transform_shapely_geometry
-
 from .SpatialDataObject import SpatialDataObject
 import geopandas as gpd
 import shapely
@@ -77,10 +72,4 @@ class AFDCApiDataObject(SpatialDataObject):
             geometry=gdf_afdc_response_to_save.geometry
         )
         self._set_is_loaded()
-
-    def get_scores(self) -> pd.Series:
-        return self._get_scores_from_function(get_score_constant_value(5), [])
-    
-    def get_score_decay_function(self) -> Callable[[float], float]:
-        return get_linear_decay_function(500)
 

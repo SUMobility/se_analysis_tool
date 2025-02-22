@@ -9,12 +9,8 @@ from pyproj import CRS
 import folium
 import osmnx as ox
 from osmnx import _errors as OsmnxExceptions
-
 from MobilityHubDataObjects.constants import GEODESIC_CRS
-from MobilityHubDataObjects.scoreDecayFunctions import get_linear_decay_function
-from MobilityHubDataObjects.scoreFunctions import get_score_constant_value
 from MobilityHubDataObjects.utils import basic_circle_marker, call_pygris_with_error_handling, raise_tiger_http_error, safe_is_na
-
 from .SpatialDataObject import SpatialDataObject
 
 PARKING_SEARCH_DISTANCE_METERS_ADDRESS = 80
@@ -217,13 +213,6 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         ox.settings.cache_folder = old_cache_path
         self._set_is_loaded()
 
-
-    def get_scores(self) -> pd.Series:
-        return self._get_scores_from_function(get_score_constant_value(5), [])
-
-    def get_score_decay_function(self) -> Callable[[float], float]:
-        return get_linear_decay_function(250)
-
     def get_folium_plot(self) -> folium.GeoJson:
         fta_popup = folium.GeoJsonPopup(
             fields=list(np.intersect1d(
@@ -239,6 +228,3 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
             popup=fta_popup
         )
         return fta_geojson
-
-
-

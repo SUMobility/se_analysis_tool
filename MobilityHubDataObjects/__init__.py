@@ -4,8 +4,6 @@ from .SpatialDataObject import *
 from .AFDCApiDataObject import *
 from .constants import *
 from .CityBikesDataObject import *
-from .scoreFunctions import *
-from .ScoreWrapper import *
 from .BaseLayer import *
 from .OSMBikeStreetsDataObject import *
 from .MobilityHubDataObject import *
@@ -17,7 +15,6 @@ __all__ = [
     "FTAFacilityInventoryDataObject",
     "OSMBikeParkingDataObject",
     "CityBikesDataObject",
-    "ScoreWrapper",
     "BaseLayer",
     "BaseLayerEjscreen",
     "SmartLocationWrapper",

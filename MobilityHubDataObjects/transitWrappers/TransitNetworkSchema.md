@@ -1,7 +1,5 @@
 # TransitNetwork schemas
 
-Tables beginning with a `_` do not have a getter and should be considered "private"
-
 ### `gdf_stops`
 
 **Type:** Spatial GeoDataFrame with point geometries
@@ -62,7 +60,7 @@ Tables beginning with a `_` do not have a getter and should be considered "priva
 | `mode` | The mode of the service pattern | `ModeClassification` |
 | `service_pattern_id_original` | The value of `service_pattern_id` as given in `FeedWrapper.df_service_patterns` | `str` |
 
-### `_df_routes` (private)
+### `df_routes`
 **Type:** DataFrame
 
 **Index:** 
@@ -76,7 +74,7 @@ Tables beginning with a `_` do not have a getter and should be considered "priva
 | `feed` | The id of the feed the stop is associated with | `str` |
 | `route_id_original` | The id of the route as given in the `routes.txt` for the feed | `str`
 
-###  `_df_stop_graph` (private)
+###  `df_stop_graph` (private)
 
 **Type:** DataFrame
 
@@ -94,7 +92,7 @@ Tables beginning with a `_` do not have a getter and should be considered "priva
 | `first_stop` | `True` if this row represents the first stop on a service pattern, `False` otherwise | `bool` |
 | `overlapping_service_patterns` | An iterable of other service patterns that serve this stop | A `tuple` of `str`s |
 
-### `_df_overlapping_service_patterns` (private)
+### `df_overlapping_service_patterns`
 
 **Type:** DataFrame
 
