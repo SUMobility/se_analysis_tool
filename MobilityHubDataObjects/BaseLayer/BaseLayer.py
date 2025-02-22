@@ -18,6 +18,8 @@ from .entities import BaseLayerMetric
 from MobilityHubDataObjects.utils import call_pygris_with_error_handling, raise_tiger_http_error, transform_shapely_geometry
 
 class BaseLayer(SpatialDataObject):
+    name = "base_layer"
+    _gdf = gpd.GeoDataFrame
     def __init__(self, metrics: Iterable[BaseLayerMetric], local_crs: int, color_map: ColorMaps, smooth: bool, remove_water=True):
         self.metrics = metrics
         self.local_crs = local_crs
@@ -74,14 +76,11 @@ class BaseLayer(SpatialDataObject):
                 gdf_tiger[metric_series.name] = metric_series
             metric_names.append(metric_series.name)
         self.metric_names = list(metric_names)
-        self.gdf = gdf_tiger
+        self._gdf = gdf_tiger
         self._set_is_loaded()
 
     def get_folium_plot(self):
-        gdf_to_render = gpd.GeoDataFrame(
-            self.gdf[self.metric_names],
-            geometry=self.gdf.geometry
-        )
+        gdf_to_render = self.gdf
         gdf_to_render["color"] = self.color_map_function(
             gdf_to_render[self.metric_names]
         )
@@ -97,12 +96,15 @@ class BaseLayer(SpatialDataObject):
             },
             popup=popup
         ) 
-
-    def get_score_decay_function(self) -> Callable[[float], float]:
-        raise NotImplementedError()
     
-    def get_scores(self) -> pd.Series:
-        raise NotImplementedError
+    @property
+    def gdf(self):
+        if not self.get_is_loaded:
+            raise RuntimeError("Must load data object before the gdf can be obtained")
+        return gpd.GeoDataFrame(
+            self._gdf[self.metric_names],
+            geometry=self._gdf.geometry
+        )
 
 def kde_smoothing(data: pd.Series, points_dropped: gpd.GeoSeries, k=5, bandwidth=0.005, distances_factor = 1/100000):
     """

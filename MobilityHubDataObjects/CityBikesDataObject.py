@@ -14,6 +14,9 @@ CITYBIKES_FIELDS = ["system_name", "system", "station_name", 'capacity', "has_eb
 CITYBIKES_ALIASES = ["System Name", "Operator", "Station Name", "Capacity", "Has Ebikes?"]
 
 class CityBikesDataObject(SpatialDataObject):
+    _gdf = gpd.GeoDataFrame
+    name = "citybikes_bikeshare_docks"
+
     def __init__(self, citybikes_url: str) -> None:
         self.citybikes_url = citybikes_url
 
@@ -65,19 +68,19 @@ class CityBikesDataObject(SpatialDataObject):
         gdf_citybikes_stations_to_save = gdf_citybikes_stations.rename(columns={"name": "system_name"}).loc[
             gdf_citybikes_stations.within(load_area_transformed)
         ]
-        self.gdf = gpd.GeoDataFrame(
+        self._gdf = gpd.GeoDataFrame(
             gdf_citybikes_stations_to_save[CITYBIKES_FIELDS],
             geometry=gdf_citybikes_stations_to_save.geometry)
         self._set_is_loaded()
 
     def get_folium_plot(self) -> GeoJson:
-        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, CITYBIKES_FIELDS, CITYBIKES_ALIASES)
+        fields, aliases = filter_two_corresponding_arrays(self._gdf.columns, CITYBIKES_FIELDS, CITYBIKES_ALIASES)
         citybikes_popup = folium.GeoJsonPopup(
             fields=fields,
             aliases=aliases
         )
         return folium.GeoJson(
-            self.gdf,
+            self._gdf,
             popup=citybikes_popup,
             marker=basic_circle_marker("green")
         )

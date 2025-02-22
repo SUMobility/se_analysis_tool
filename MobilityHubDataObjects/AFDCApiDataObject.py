@@ -12,7 +12,8 @@ AFDC_FIELDS = ["station_name", "street_address", "ev_network", "ev_network_web"]
 AFDC_ALIASES = ["Name", "Address", "Network", "Website"]
 
 class AFDCApiDataObject(SpatialDataObject):
-    gdf = gpd.GeoDataFrame
+    _gdf = gpd.GeoDataFrame
+    name = "afdc_ev_chargers"
     def __init__(self, source, api_key_path, local_projected_crs):
         # TODO: ping api url to make sure it works
         self.source = source
@@ -27,7 +28,7 @@ class AFDCApiDataObject(SpatialDataObject):
         return gpd.read_file(url)
 
     def get_folium_plot(self) -> folium.GeoJson:
-        fields, aliases = filter_two_corresponding_arrays(self.gdf.columns, AFDC_FIELDS, AFDC_ALIASES)
+        fields, aliases = filter_two_corresponding_arrays(self._gdf.columns, AFDC_FIELDS, AFDC_ALIASES)
         afdc_popup = folium.GeoJsonPopup(
             fields=fields,
             aliases=aliases,
@@ -35,7 +36,7 @@ class AFDCApiDataObject(SpatialDataObject):
             labels=True,
         )
         afdc_geojson = folium.GeoJson(
-            self.gdf[["station_name", "street_address", "ev_network", "ev_network_web", "geometry"]],
+            self._gdf[["station_name", "street_address", "ev_network", "ev_network_web", "geometry"]],
             marker=basic_circle_marker("blue"),
             popup=afdc_popup,
         )
@@ -67,7 +68,7 @@ class AFDCApiDataObject(SpatialDataObject):
             load_area_max_distance * METERS_TO_MILES_FACTOR,
         )
         gdf_afdc_response_to_save = gdf_afdc_response.loc[gdf_afdc_response.within(load_area)]
-        self.gdf = gpd.GeoDataFrame(
+        self._gdf = gpd.GeoDataFrame(
             gdf_afdc_response_to_save[AFDC_FIELDS],
             geometry=gdf_afdc_response_to_save.geometry
         )

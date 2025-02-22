@@ -10,7 +10,18 @@ from typing import Callable
 
 class SpatialDataObject(ABC):
     _loaded = False
-    gdf = gpd.GeoDataFrame
+    _gdf = gpd.GeoDataFrame
+
+    @property
+    def gdf(self):
+        if not self.get_is_loaded:
+            raise RuntimeError("Must load data object before the gdf can be obtained")
+        return self._gdf.copy()
+
+    @property
+    @abstractmethod
+    def name(self):
+        return self._name
 
     @abstractmethod
     def load_data(

@@ -29,7 +29,9 @@ PARKING_FILTER = {
 NTD_FIELDS = ["NTD ID", "Agency Name", "Facility Type", "Facility Name", "Notes"]
 
 class FTAFacilityInventoryDataObject(SpatialDataObject):
-    gdf = gpd.GeoDataFrame
+    _gdf = gpd.GeoDataFrame
+    name = "ntd_transit_agency_parking"
+
     def __init__(
         self,
         fta_path: (str | pathlib.Path),
@@ -208,7 +210,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         gdf_inventory_combined = pd.concat([gdf_inventory_geodesic, gdf_spaces_points])
         # Save the responses that are within the load_area TODO: add an area filter earlier up to avoid geocoding unnecessary places
         gdf_inventory_combined = gdf_inventory_combined.loc[gdf_inventory_combined.within(load_area)].dropna(subset=["geometry"]).copy()
-        self.gdf = gpd.GeoDataFrame(gdf_inventory_combined[NTD_FIELDS], geometry=gdf_inventory_combined.geometry)
+        self._gdf = gpd.GeoDataFrame(gdf_inventory_combined[NTD_FIELDS], geometry=gdf_inventory_combined.geometry)
         # Reset OSMNX cache settings to default
         ox.settings.cache_folder = old_cache_path
         self._set_is_loaded()
@@ -217,12 +219,12 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         fta_popup = folium.GeoJsonPopup(
             fields=list(np.intersect1d(
                 NTD_FIELDS,
-                self.gdf.columns
+                self._gdf.columns
             ))
         )
         light_blue_color = "#12aae6"
         fta_geojson = folium.GeoJson(
-            self.gdf,
+            self._gdf,
             marker=basic_circle_marker(light_blue_color),
             style_function = lambda _: {"radius": 3, "fillcolor": light_blue_color},
             popup=fta_popup

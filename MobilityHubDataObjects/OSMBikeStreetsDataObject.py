@@ -39,6 +39,9 @@ BIKE_COLORS = {
 DEFAULT_REFERENCE_DISTANCE = 4829 # 3 miles in meters
 
 class OSMBikeStreetsDataObject(SpatialDataObject):
+    _gdf = gpd.GeoDataFrame
+    name = "osm_bike_infrastructure"
+
     def __init__(
             self,
             cache_path: (str | pathlib.Path),
@@ -59,7 +62,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
         old_cache_path = ox.settings.cache_folder
         ox.settings.cache_folder = self.cache_path
         if self.reference is not None:
-            reference_geom = self.reference.gdf.geometry.to_crs(self.local_crs).buffer(self.max_distance_from_reference).unary_union
+            reference_geom = self.reference._gdf.geometry.to_crs(self.local_crs).buffer(self.max_distance_from_reference).unary_union
             load_area_geom = transform_shapely_geometry(
                 self.local_crs,
                 GEODESIC_CRS,
@@ -110,7 +113,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
             ~gdf_osm_processed.index.duplicated(keep="first")
         ]
         gdf_osm_processed = gpd.GeoDataFrame(gdf_osm_processed.reset_index(), geometry="geometry", crs=osm_crs)
-        self.gdf = gpd.GeoDataFrame(gdf_osm_processed[BIKE_FIELDS], geometry=gdf_osm_processed.geometry)
+        self._gdf = gpd.GeoDataFrame(gdf_osm_processed[BIKE_FIELDS], geometry=gdf_osm_processed.geometry)
         ox.settings.cache_folder = old_cache_path
         self._set_is_loaded()
     
@@ -120,7 +123,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
             aliases=BIKE_ALIASES
         )
         return folium.GeoJson(
-            data=self.gdf,
+            data=self._gdf,
             popup=bike_lane_popup,
             style_function=lambda x: {
                 "color": BIKE_COLORS["paint_only"] if x["properties"]["paint_only"] else BIKE_COLORS["not_paint_only"],

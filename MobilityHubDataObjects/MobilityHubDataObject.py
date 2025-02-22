@@ -63,6 +63,8 @@ OUTPUT_NAMES = [
 ]
 
 class MobilityHubDataObject(SpatialDataObject):
+    _gdf = gpd.GeoDataFrame
+    name = "mobility_hubs"
     def __init__(self, transit_stop_data_object, base_layer: BaseLayer, local_crs, **classifier_config):
         self.transit_stop_data_object = transit_stop_data_object
         self.base_layer = base_layer
@@ -75,11 +77,11 @@ class MobilityHubDataObject(SpatialDataObject):
     def load_data(self, load_area, load_area_crs):
         assert self.transit_stop_data_object.get_is_loaded()
         assert np.all([metric in self.base_layer.metric_names for metric in USED_BASE_LAYER_METRICS])
-        gdf_transit_stops = self.transit_stop_data_object.gdf.loc[
-            self.transit_stop_data_object.gdf.within(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area))
+        gdf_transit_stops = self.transit_stop_data_object.gdf_with_enums.loc[
+            self.transit_stop_data_object.gdf_with_enums.within(transform_shapely_geometry(load_area_crs, GEODESIC_CRS, load_area))
         ]
         gdf_merged_transit_stops = assign_base_layer_vars_to_points(
-            self.base_layer.gdf, gdf_transit_stops, USED_BASE_LAYER_METRICS, POINT_BUFFER_RADIUS, self.local_crs
+            self.base_layer._gdf, gdf_transit_stops, USED_BASE_LAYER_METRICS, POINT_BUFFER_RADIUS, self.local_crs
         )
         # Correct for cases where headways are unrealistically high (happens when service is very bunched)
         min_reasonable_headway = 60 / gdf_merged_transit_stops["total_frequency"]
@@ -94,7 +96,9 @@ class MobilityHubDataObject(SpatialDataObject):
         # For convenience, make sure the name of gdf_merged_points.geometry is "geometry"
         gdf_merged_transit_stops["geometry"] = gdf_merged_transit_stops.geometry
         gdf_merged_transit_stops.geometry = gdf_merged_transit_stops["geometry"]
-        self.gdf = gdf_merged_transit_stops[[*OUTPUT_COLUMNS, gdf_merged_transit_stops.geometry.name]]
+        self._gdf = gdf_merged_transit_stops[
+            [*OUTPUT_COLUMNS, gdf_merged_transit_stops.geometry.name]
+        ].to_crs(GEODESIC_CRS).dropna(subset=["mode"])
         self._set_is_loaded()
     
     def get_folium_plot(self):
@@ -113,16 +117,23 @@ class MobilityHubDataObject(SpatialDataObject):
                 return "#ff00ee"
             if od_type == LocalDestinationClassification.LOCAL.value and trunk_branch_type == TrunkBranchClassification.BRANCH.value:
                 return "#ffb0fa"
-        gdf_to_display = self.gdf.to_crs(GEODESIC_CRS).dropna(subset=["mode"])
-        gdf_to_display[["mode", "od_type", "trunk_branch_type"]] = gdf_to_display[["mode", "od_type", "trunk_branch_type"]].map(lambda x: x.value)
+        
         return folium.GeoJson(
-            gdf_to_display,
+            self.gdf,
             marker=basic_circle_marker("black"),
             style_function=lambda x: {
                 "fillColor": get_color(x["properties"]["od_type"], x["properties"]["trunk_branch_type"])
             },
             popup=popup
         )
+
+    @property
+    def gdf(self):
+        if not self.get_is_loaded:
+            raise RuntimeError("Must load data object before the gdf can be obtained")
+        output_gdf = self._gdf.copy()
+        output_gdf[["mode", "od_type", "trunk_branch_type"]] = output_gdf[["mode", "od_type", "trunk_branch_type"]].map(lambda x: x.value)
+        return output_gdf
 
     @staticmethod
     def _classify_od(od_scores):

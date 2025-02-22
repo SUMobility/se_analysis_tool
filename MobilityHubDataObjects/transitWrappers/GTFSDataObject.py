@@ -76,7 +76,8 @@ MIN_TRIPS = 5
 class GTFSDataObject(SpatialDataObject):
     df_feeds_metadata = None
     load_area = None
-    gdf = gpd.GeoDataFrame()
+    _gdf = gpd.GeoDataFrame()
+    name = "transitland_gtfs_stops"
 
     def __init__(
         self,
@@ -170,7 +171,7 @@ class GTFSDataObject(SpatialDataObject):
         if get_from_cache:
             self._network = None
             gdf_stops_raw = gpd.read_file(stops_geometry_path)
-            self.gdf = self._convert_from_geojson(gdf_stops_raw)
+            self._gdf = self._convert_from_geojson(gdf_stops_raw)
             self._set_is_loaded()
             return
 
@@ -258,8 +259,8 @@ class GTFSDataObject(SpatialDataObject):
         self.df_feeds_metadata = df_feeds_metadata
         # Save the stops, excluding any that do not have service associated with them
         #TODO: there should be a funciton to perform this filter in TransitNetwork
-        self.gdf = gdf_stop_locations#.dropna(subset=["mode"])
-        gdf_stop_locations_saveable = self._make_safe_for_geojson(self.gdf)
+        self._gdf = gdf_stop_locations#.dropna(subset=["mode"])
+        gdf_stop_locations_saveable = self.gdf
         # Save stops and feed metadata to file
         df_feeds_metadata.to_csv(feeds_metadata_path)
         gdf_stop_locations_saveable.to_file(stops_geometry_path)
@@ -278,10 +279,9 @@ class GTFSDataObject(SpatialDataObject):
             fields=fields_to_display,
             aliases=GTFS_ALIASES,
         )
-        gdf_safe = self._make_safe_for_geojson(self.gdf)
         gtfs_geojson = folium.GeoJson(
-            gdf_safe.reset_index()[
-                [*fields_to_display, self.gdf.geometry.name]
+            self.gdf.reset_index()[
+                [*fields_to_display, self._gdf.geometry.name]
             ],
             popup=gtfs_popup,
             marker=basic_circle_marker("orange"),
@@ -401,9 +401,15 @@ class GTFSDataObject(SpatialDataObject):
         output, _ = recursively_make_transitland_call_help(max_responses, initial_load_area_bounds, max_calls)
         return output
     
-    @staticmethod
-    def _make_safe_for_geojson(gdf):
-        gdf_copy = gdf.copy()
+    @property
+    def gdf_with_enums(self):
+        return self._gdf.copy()
+
+    @property
+    def gdf(self):
+        if not self.get_is_loaded:
+            raise RuntimeError("Must load data object before the gdf can be obtained")
+        gdf_copy = self._gdf.copy()
         gdf_copy[["mode", "mode_classification"]] = gdf_copy[
             ["mode", "mode_classification"]
         ].map(lambda x: NO_MODE if safe_is_na(x) else  x.value)
