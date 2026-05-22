@@ -1,4 +1,4 @@
-from MobilityHubDataObjects.utils import download_json_safely, safe_is_na
+from SEDataObjects.utils import download_json_safely, safe_is_na
 
 
 class GBFSFeedWrapper:

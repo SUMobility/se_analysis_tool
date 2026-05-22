@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
-from MobilityHubDataObjects import SpatialDataObject, constants
-from MobilityHubDataObjects.utils import basic_circle_marker, download_json_safely, filter_two_corresponding_arrays, transform_shapely_geometry
+from SEDataObjects import SpatialDataObject, constants
+from SEDataObjects.utils import basic_circle_marker, download_json_safely, filter_two_corresponding_arrays, transform_shapely_geometry
 
 COUNTRY_CODE_US = "US"
 

@@ -10,12 +10,12 @@ import shapely
 from scipy.spatial import KDTree
 import time
 
-from MobilityHubDataObjects import SpatialDataObject
-from MobilityHubDataObjects.constants import GEODESIC_CRS
+from SEDataObjects import SpatialDataObject
+from SEDataObjects.constants import GEODESIC_CRS
 from .ColorMaps import ColorMaps
 from .constants import ACS_YEAR, BUFFER_SIZE, EJSCREEN_NAME, GEOID_COLUMN, GEOID_NAME, TIGER_CRS
 from .entities import BaseLayerMetric
-from MobilityHubDataObjects.utils import call_pygris_with_error_handling, raise_tiger_http_error, transform_shapely_geometry
+from SEDataObjects.utils import call_pygris_with_error_handling, raise_tiger_http_error, transform_shapely_geometry
 
 class BaseLayer(SpatialDataObject):
     name = "base_layer"

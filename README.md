@@ -24,7 +24,7 @@ source env/bin/activate
 pip install -r requirements.txt
 ```
 
-Then, open `mapper.ipynb`, either using an editor like VS Code or DataSpell, or by running `jupyter notebook` and selecting `mapper.ipynb` from the dropdown. Fill out the values in the `CONFIG` dictionary in the second cell with the names of your files and api keys as necessary. Instructions are present for each entry in the notebook. You may not need to change all entries. Finally, run all cells of the notebook to obtain all data (which might take a while), and view the maps. You can view definitions, schemas, and configuration files by referring to readmes in /MobilityHubDataObjects and /MobilityHubDataObjects/transitWrappers.
+Then, open `mapper.ipynb`, either using an editor like VS Code or DataSpell, or by running `jupyter notebook` and selecting `mapper.ipynb` from the dropdown. Fill out the values in the `CONFIG` dictionary in the second cell with the names of your files and api keys as necessary. Instructions are present for each entry in the notebook. You may not need to change all entries. Finally, run all cells of the notebook to obtain all data (which might take a while), and view the maps. You can view definitions, schemas, and configuration files by referring to readmes in /SEDataObjects and /SEDataObjects/transitWrappers.
 
 ### Contact
 Please email [Colin](mailto:colin@sharedusemobilitycenter.org) if you need any help!

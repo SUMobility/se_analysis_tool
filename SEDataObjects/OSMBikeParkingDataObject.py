@@ -7,8 +7,8 @@ from pandas.core.api import Series as Series
 import shapely
 import folium
 
-from MobilityHubDataObjects.constants import GEODESIC_CRS
-from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, small_geodesic_polygons_to_points, transform_shapely_geometry
+from SEDataObjects.constants import GEODESIC_CRS
+from SEDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, small_geodesic_polygons_to_points, transform_shapely_geometry
 
 from .SpatialDataObject import SpatialDataObject
 

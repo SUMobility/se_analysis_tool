@@ -9,8 +9,8 @@ from pyproj import CRS
 import folium
 import osmnx as ox
 from osmnx import _errors as OsmnxExceptions
-from MobilityHubDataObjects.constants import GEODESIC_CRS
-from MobilityHubDataObjects.utils import basic_circle_marker, call_pygris_with_error_handling, raise_tiger_http_error, safe_is_na
+from SEDataObjects.constants import GEODESIC_CRS
+from SEDataObjects.utils import basic_circle_marker, call_pygris_with_error_handling, raise_tiger_http_error, safe_is_na
 from .SpatialDataObject import SpatialDataObject
 
 PARKING_SEARCH_DISTANCE_METERS_ADDRESS = 80

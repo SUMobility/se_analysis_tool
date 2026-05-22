@@ -17,7 +17,7 @@ import geopandas as gpd
 from scipy.stats import percentileofscore
 import appdirs
 
-from MobilityHubDataObjects import SpatialDataObject
+from SEDataObjects import SpatialDataObject
 
 def basic_circle_marker(fillColor: str, **kwargs) -> folium.CircleMarker:
     kwargs_to_pass = dict(kwargs)

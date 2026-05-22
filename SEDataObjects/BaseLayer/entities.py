@@ -5,7 +5,7 @@ import pandas as pd
 import geopandas as gpd
 from pygris.data import get_census
 
-from MobilityHubDataObjects.BaseLayer import SmartLocationWrapper
+from SEDataObjects.BaseLayer import SmartLocationWrapper
 
 from .utils import split_county_fips
 from .constants import GEOID_COLUMN

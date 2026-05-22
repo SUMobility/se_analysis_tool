@@ -10,3 +10,5 @@ cache/tiger_cache/*
 !cache/tiger_cache/.gitkeep
 gtfs/
 .DS_store
+.idea/
+*.iml

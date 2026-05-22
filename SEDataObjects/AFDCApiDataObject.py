@@ -1,6 +1,6 @@
 from typing import Callable
 import pandas as pd
-from MobilityHubDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, transform_shapely_geometry
+from SEDataObjects.utils import basic_circle_marker, filter_two_corresponding_arrays, transform_shapely_geometry
 from .SpatialDataObject import SpatialDataObject
 import geopandas as gpd
 import shapely

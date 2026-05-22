@@ -3,7 +3,7 @@ import math
 import pandas as pd
 import numpy as np
 import branca.colormap as cm
-from MobilityHubDataObjects.BaseLayer.constants import EJSCREEN_NAME, SMART_LOCATION_NATIONAL_WALKABILITY_INDEX_NAME
+from SEDataObjects.BaseLayer.constants import EJSCREEN_NAME, SMART_LOCATION_NATIONAL_WALKABILITY_INDEX_NAME
 
 
 class ColorMaps(Enum):

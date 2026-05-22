@@ -1,8 +1,0 @@
-from typing import Iterable
-from MobilityHubDataObjects.BaseLayer.constants import SMART_LOCATION_ENTERTAINMENT_JOB_DENSITY, SMART_LOCATION_ENTERTAINMENT_JOB_DENSITY_NAME, SMART_LOCATION_RETAIL_ENTERTAINMENT_JOB_DENSITY_NAME, SMART_LOCATION_RETAIL_JOB_DENSITY, SMART_LOCATION_RETAIL_JOB_DENSITY_NAME
-from MobilityHubDataObjects.BaseLayer.entities import BaseLayerSmartLocation
-
-
-class SmartLocationRetailEntertainmentJobDensity(BaseLayerSmartLocation):
-        metric_field_id = [SMART_LOCATION_ENTERTAINMENT_JOB_DENSITY, SMART_LOCATION_RETAIL_JOB_DENSITY]
-        metric_alias = SMART_LOCATION_RETAIL_ENTERTAINMENT_JOB_DENSITY_NAME

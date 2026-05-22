@@ -8,8 +8,8 @@ import geopandas as gpd
 import requests
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
-from MobilityHubDataObjects import SpatialDataObject, constants
-from MobilityHubDataObjects.utils import safe_is_na, transform_shapely_geometry
+from SEDataObjects import SpatialDataObject, constants
+from SEDataObjects.utils import safe_is_na, transform_shapely_geometry
 
 COUNTRY_KEY = "COUNTRY",
 SYSTEM_NAME_KEY = "SYSTEM_NAME"
