@@ -1,5 +1,5 @@
-# Mobility Hub Data
-This repository contains a library and Jupyter notebooks for the SUMC Mobility Hub Site Selection Tool.
+# Safety and Economic Analysis Mapping Tool
+This repository contains a library and Jupyter notebooks for the SUMC Safety and Economic Analysis mapping tool.
 
 ### Setting Up
 First, add files to the `rawData` folder as follows:
