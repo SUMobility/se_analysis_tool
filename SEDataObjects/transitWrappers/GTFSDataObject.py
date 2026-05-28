@@ -27,7 +27,7 @@ GTFS_FEEDS_FIELDS_TO_STORE = [
     "raw_feed_path",
     "processed_file_path",
     "last_fetched",
-    #"last_valid_date",
+#    "last_valid_date",
     "attribution_url",
     "attribution_text",
     "attribution_instructions",
@@ -249,7 +249,7 @@ class GTFSDataObject(SpatialDataObject):
         else:
             gdf_stop_locations = network.gdf_stops
         self._network = network
-        #df_route_summary = network.get_summary_routes_df()
+       # df_route_summary = network.get_summary_routes_df()
         gdf_stop_locations["min_overlap_headway"] = network.weighted_headways_by_stop_overlap.groupby(level=0).min()
         gdf_stop_locations["total_frequency"] = network.weighted_frequencies_by_stop_overlap.groupby(level=0).sum()
         gdf_stop_locations["transfer"] = network.transfer_status

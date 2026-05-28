@@ -52,7 +52,7 @@ class BaseLayerCensus(BaseLayerMetric, ABC):
         state_id, county_id = split_county_fips(county_id)
         state = state_id[0]
         data = get_census(
-            dataset="2022/acs/acs5",
+            dataset="2024/acs/acs5",
             variables=list(self.variable_dict.values()),
             params={
                 "for": f"block group: *",
@@ -67,7 +67,6 @@ class BaseLayerCensus(BaseLayerMetric, ABC):
     @abstractmethod
     def get_data_for_ids(self, ids: pd.Series) -> pd.Series:
         pass
-
 
 class BaseLayerSmartLocation(BaseLayerMetric, ABC):
     gdf_block_groups = None

@@ -1,21 +1,18 @@
-import pathlib
-from typing import Callable, Iterable
+from typing import Iterable
 import folium
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pygris
-from pygris.utils import erase_water
 import shapely
+from pygris.utils import erase_water
 from scipy.spatial import KDTree
-import time
 
 from SEDataObjects import SpatialDataObject
-from SEDataObjects.constants import GEODESIC_CRS
+from SEDataObjects.utils import call_pygris_with_error_handling, transform_shapely_geometry
 from .ColorMaps import ColorMaps
-from .constants import ACS_YEAR, BUFFER_SIZE, EJSCREEN_NAME, GEOID_COLUMN, GEOID_NAME, TIGER_CRS
+from .constants import ACS_YEAR, BUFFER_SIZE, GEOID_COLUMN, GEOID_NAME
 from .entities import BaseLayerMetric
-from SEDataObjects.utils import call_pygris_with_error_handling, raise_tiger_http_error, transform_shapely_geometry
 
 class BaseLayer(SpatialDataObject):
     name = "base_layer"
@@ -34,7 +31,7 @@ class BaseLayer(SpatialDataObject):
     ):
         # Load a gdf of counties
         gdf_counties_national = call_pygris_with_error_handling(
-            pygris.counties, cache=True, year=2023
+            pygris.counties, cache=True, year=2024
         ).to_crs(load_area_crs)
         # Shrink the load area slightly to avoid getting bordering geometries
         load_area_shrunk = transform_shapely_geometry(
@@ -114,7 +111,7 @@ def kde_smoothing(data: pd.Series, points_dropped: gpd.GeoSeries, k=5, bandwidth
     :param points: a Geopandas GeoSeries of points associated with data. Must be identically shaped with data
     :param kd_tree: a Kernel Density tree containing each entry of geom. #TODO: allow this to be generated if None is specified
     :param k: the number of geometries to query for. higher = more smoothing, defaults to 5
-    :param bandwidth: the bandwidth parameter for the Gaussian smopthing algorithm. Higher bandwith = further points have more weight, defaults to 0.1
+    :param bandwidth: the bandwidth parameter for the Gaussian smoothing algorithm. Higher bandwidth = further points have more weight, defaults to 0.1
     :param distances_factor: the amount to multiply distances by, defaults to 1/100000 to keep values of d^2 reasonably sized and avoid floating point error
     """
     # Build kd tree

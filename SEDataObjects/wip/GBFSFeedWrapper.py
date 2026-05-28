@@ -16,7 +16,7 @@ class GBFSFeedWrapper:
                 self.got_gbfs_json = True
             except KeyError:
                 print(f"WARN: gbfs.json file with {url} downloaded but did not have valid English feeds")
-            self.system_information = download_json_safel
+            self.system_information = download_json_safely()
     
 
     

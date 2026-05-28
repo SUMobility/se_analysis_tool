@@ -9,7 +9,7 @@ import requests
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
 from SEDataObjects import SpatialDataObject, constants
-from SEDataObjects.utils import safe_is_na, transform_shapely_geometry
+from SEDataObjects.utils import safe_is_na, transform_shapely_geometry, download_json_safely
 
 COUNTRY_KEY = "COUNTRY",
 SYSTEM_NAME_KEY = "SYSTEM_NAME"
@@ -50,7 +50,7 @@ class GBFSDataObject(SpatialDataObject):
     
     def load_data(self, load_area: MultiPolygon | Polygon | None, load_area_crs: int = 4326) -> None:
         # Get state codes in the load area
-        gdf_states = gpd.read_file(self.states_geometry_path).to_crs(constants.GEOMETRIC_CRS)
+        gdf_states = gpd.read_file(self.states_geometry_path).to_crs(constants.GEODESIC_CRS)
         load_area_geometric =  transform_shapely_geometry(load_area_crs, constants.GEODESIC_CRS, load_area)
         state_codes_in_load_area = gdf_states.loc[gdf_states.contains(load_area_geometric), self.state_code_header]
 
