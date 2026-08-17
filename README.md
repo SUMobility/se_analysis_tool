@@ -6,13 +6,15 @@ First, add files to the `rawData` folder as follows:
 - EPA EJScreen database
   - The Geodatabase labeled National EJScreen Data at the Block Group Level from the [Data Download page](https://www.epa.gov/ejscreen/download-ejscreen-data)
 - EPA SmartLocation database
-  - The Geodatabase labeled "data for all areas with coverage" from the [SLD page](https://www.epa.gov/smartgrowth/smart-location-mapping#SLD)
+  - The Geodatabase labeled "ESRI Geodatabase" from the [SLT page](https://www.epa.gov/smartgrowth/smart-location-mapping#Trans45)
 - FTA National Transit Database Facility Inventory
   - Download the Facility Inventory sheet linked [here](https://www.transit.dot.gov/ntd/data-product/2023-annual-database-facility-inventory). For different years, change the year in the URL
-- National Renewable Energy Lab Alternative Fuels Data Center (NREL AFDC)
-  - This data is provided through an API, but a key is required. Please [register for a key on NREL's developer site](https://developer.nrel.gov/) and save it to a file in the `rawData` folder
+- National Laboratory of the Rockies (NLR AFDC)
+  - This data is provided through an API, but a key is required. Please [register for a key on NLR's developer site](https://developer.nlr.gov/) and save it to a file in the `rawData` folder
 - TransitLand GTFS Feeds API
-  - Obtain a free Interline API key from [their website](https://www.interline.io/transitland/plans-pricing/). You will need to register an account, but the free plam is more than sufficient for this application. Save the key in a file in the `rawData` folder.
+  - Obtain a free Interline API key from [their website](https://www.interline.io/transitland/plans-pricing/). You will need to register an account, but the free plan is more than sufficient for this application. Save the key in a file in the `rawData` folder.
+- Census API
+  - Obtain a free Census API Key from [their website](https://api.census.gov/data/key_signup.html). Save this key in a separate folder in the `rawData` folder 
 - Load Area
   - Obtain a spatial data file containing a single Polygon or Multipolygon corresponding to the area you wish to load, and place it in the `rawData` folder. The file must have EPSG:4326 as the CRS.
 
