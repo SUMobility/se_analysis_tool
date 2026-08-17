@@ -4,7 +4,7 @@ This repository contains a library and Jupyter notebooks for the SUMC Safety and
 ### Setting Up
 First, add files to the `rawData` folder as follows:
 - EPA EJScreen database
-  - The Geodatabase labeled National EJScreen Data at the Block Group Level from the [Dropbox](https://www.epa.gov/ejscreen/download-ejscreen-data)
+  - The Geodatabase labeled National EJScreen Data at the Block Group Level from the [Dropbox (Need to update link with permission)](https://www.epa.gov/ejscreen/download-ejscreen-data)
 - EPA SmartLocation database
   - The Geodatabase labeled "ESRI Geodatabase" from the [SLT page](https://www.epa.gov/smartgrowth/smart-location-mapping#Trans45)
 - FTA National Transit Database Facility Inventory
