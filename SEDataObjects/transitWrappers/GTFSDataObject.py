@@ -27,7 +27,7 @@ GTFS_FEEDS_FIELDS_TO_STORE = [
     "raw_feed_path",
     "processed_file_path",
     "last_fetched",
-#    "last_valid_date",
+    #"last_valid_date",
     "attribution_url",
     "attribution_text",
     "attribution_instructions",
@@ -191,8 +191,12 @@ class GTFSDataObject(SpatialDataObject):
                 cached_feed_metadata = df_feeds_metadata.loc[feed_id]
                 cached_last_downloaded = cached_feed_metadata["last_fetched"]
                 cached_fetch_status = cached_feed_metadata["last_fetch_succeeded"]
-            if self.load_from_cache and cached_fetch_status and (datetime_today - cached_last_downloaded > self.gtfs_cache_life):
-                response = (True, df_feeds_metadata.loc["raw_feed_path"], df_feeds_metadata.loc["sha1_hash"])
+            if self.load_from_cache and cached_fetch_status and (datetime_today - cached_last_downloaded < self.gtfs_cache_life):
+                response = DownloadResponse(
+                    True,
+                    pathlib.Path(cached_feed_metadata["raw_feed_path"]),
+                    cached_feed_metadata.get("sha1_hash", None),
+                    )
             else:
             # Download the feed and update the feed metadata
                 feed_url = current_feed_version["url"]
@@ -220,28 +224,33 @@ class GTFSDataObject(SpatialDataObject):
 
             # Load the feed object
             print(f"Loading {feed_id}")
-            feed_object = FeedWrapper(feed_output_path, feed_id, load_area, load_area_crs, MIN_TRIPS)
-            if not feed_object.get_feed_loaded_correctly():
-                df_feeds_metadata.loc[feed_id, "last_fetch_succeeded"] = False
-                continue 
+            print(f"DEBUG: Attempting to open file path: {feed_output_path}")
+            try:
+                feed_object = FeedWrapper(feed_output_path, feed_id, load_area, load_area_crs, MIN_TRIPS)
+                if not feed_object.get_feed_loaded_correctly():
+                    continue
+            except Exception as e:
+                print(f"Skipping feed {feed_id} because it encountered an error: {e}")
+                continue
+            
             feed_name = feed_object.get_agency_name()
             print(f"FEED NAME: {feed_name}")
             feed_agency_url = feed_object.get_agency_url()
-            df_feeds_metadata.loc[feed_id] = {
-                "name": feed_name,
-                "agency_url": feed_agency_url,
-                "url": feed_url,
-                "raw_feed_path": feed_output_path,
-                "last_fetched": feed_last_fetched,
-                #"last_valid_date": feed_end_of_life_dt,
-                "attribution_url": feed_attribution_url,
-                "attribution_text": feed_attribution_text,
-                "attribution_instructions": feed_attribution_instructions,
-                "attribution_must_attribute": feed_must_attribute,
-                "last_fetch_succeeded": True,
-                "sha1_hash": response.sha1_hash
-            }
-
+            #df_feeds_metadata.loc[feed_id] = {
+                #"name": feed_name,
+                #agency_url": feed_agency_url,
+                #"url": feed_url,
+                #"raw_feed_path": feed_output_path,
+                #"last_fetched": feed_last_fetched,
+                ##"last_valid_date": feed_end_of_life_dt,
+                #"attribution_url": feed_attribution_url,
+                #"attribution_text": feed_attribution_text,
+                #"attribution_instructions": feed_attribution_instructions,
+                #"attribution_must_attribute": feed_must_attribute,
+                #"last_fetch_succeeded": True,
+                #"sha1_hash": response.sha1_hash
+            #}
+            pass
             # Add the feed to the network
             network.add_feed(feed_object)
         if self.clustering_enabled:
@@ -249,7 +258,7 @@ class GTFSDataObject(SpatialDataObject):
         else:
             gdf_stop_locations = network.gdf_stops
         self._network = network
-       # df_route_summary = network.get_summary_routes_df()
+        #df_route_summary = network.get_summary_routes_df()
         gdf_stop_locations["min_overlap_headway"] = network.weighted_headways_by_stop_overlap.groupby(level=0).min()
         gdf_stop_locations["total_frequency"] = network.weighted_frequencies_by_stop_overlap.groupby(level=0).sum()
         gdf_stop_locations["transfer"] = network.transfer_status
@@ -294,9 +303,27 @@ class GTFSDataObject(SpatialDataObject):
     async def _download_feed(self, feed_id, feed_url, df_override_feeds):
         #TODO: implement df_override_feeds to load a cached feed if it is not available from TransitLand
         feed_output_path = self.gtfs_cache_path / f"gtfs_{feed_id}.zip"
+
+        # Optional explicit blocklist (domain or feed id)
+        SKIP_DOMAINS = {"ridedowneylink.com"}
+        SKIP_FEED_IDS = set()
+
+        if feed_id in SKIP_FEED_IDS or any(d in str(feed_url).lower() for d in SKIP_DOMAINS):
+            print(f"INFO: Skipping feed {feed_id} ({feed_url}) due to skip list")
+            return DownloadResponse(False, None, None)        
+    
         # Download the feed
         try:
             sha1_hash = download_file_with_requests(feed_url, feed_output_path, MAX_CHUNK_SIZE)
+        except requests.exceptions.SSLError as e:
+            print(f"WARN: SSL error for {feed_id} ({feed_url}): {e}. Skipping feed.")
+            return DownloadResponse(False, None, None)
+        except requests.exceptions.ConnectionError as e:
+            print(f"WARN: Connection/DNS error for {feed_id} ({feed_url}): {e}. Skipping feed.")
+            return DownloadResponse(False, None, None)
+        except requests.exceptions.Timeout as e:
+            print(f"WARN: Timeout for {feed_id} ({feed_url}): {e}. Skipping feed.")
+            return DownloadResponse(False, None, None)
         except requests.HTTPError:
             sha1_hash = None
         except requests.exceptions.MissingSchema:
