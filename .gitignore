@@ -1,6 +1,6 @@
 env
 __pycache__
-rawData/*
+rawData/secrets/*
 !rawData/.gitkeep
 cache/gtfs_cache/*
 cache/osmnx_cache/*

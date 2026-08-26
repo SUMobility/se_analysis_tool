@@ -21,8 +21,13 @@ All Block Group data is currently displayed based on 2021 Census Block Groups
 | “Carlessness” Rate | ACS 5 Year 2021 Table B25044 | The proportion of occupied housing units that have no vehicles associated | Varies highly from block group to block group |
 | Total Population | ACS 5 Year 2021 Table B01003 | The population of the block group |  |
 | Population Density | SmartLocationDB | The population density of the block group |  |
-| Total Jobs | EPA SmartLocation DB | Number of jobs in the block group, based on 2017 LODES | Data for all SmartLocation values is provided with 2018 block groups, had to impute values based on an area-weighted mean where these do not match 2021 block groups   |
-| Job Accessibility by Transit in 45 mins | EPA SmartLocation DB | The number of jobs accessible from the block group by transit with less than a 45 minute trip, based on 2017 LODES data and 2021 transit service |  |
+| Total Jobs | EPA SmartLocation DB | Number of jobs in the block group, based on 2017 LODES | Data for all SmartLocation values is provided with 2018 block groups, had to impute values based on an area-weighted mean where these do not match 2021 block groups  |
+| Percent of Population with Access by Transit | EPA SmartLocation DB | Total population able to access the block group within a 45-minute transit and walking commute as a percentage of total regional population |
+| Percent of Regional Jobs Accessible by Transit | EPA SmartLocation DB | Total jobs reachable within a 45-minute transit and walking commute as a percentage of total regional jobs |
+| Percent of Workers with Access by Transit | EPA SmartLocation DB | Employed population able to access the block group within a 45-minute transit commute from their home location as a percentage of total regional employed population |
+| Percentage of all low-wage workers in region with access by transit | EPA SmartLocation DB | Low-wage workers that can reach the block group within a 45-minute transit commute from their home location as a percentage of all low-wage workers in region |
+| Percentage of all low-medium wage workers in region with access by transit | EPA SmartLocation DB | Low-medium wage workers that can reach the block group within a 45-minute transit commute from their home location as a percentage of all low-medium wage workers in region |
+| Job Accessibility by Transit in 45 mins | EPA SmartLocation DB | The number of jobs accessible from the block group by transit with less than a 45 minute trip, based on 2017 LODES data and 2021 transit service |
 | Job Density | EPA SmartLocation DB | Number of jobs per acre, based on 2017 LODES |  |
 | Retail & Entertainment Job Density | EPA SmartLocation DB | Number of jobs in retail and entertainment per 2017 LODES data, specifically those classified in NAICS sectors 44-45 (retail trade), 71 (arts/entertainment), and 72 (food service) | Used as proxy for density of retail and entertainment destinations |
 | Jobs / Housing Ratio | Derived from SmartLocation DB | Total number of jobs divided by the number of housing units |  |
