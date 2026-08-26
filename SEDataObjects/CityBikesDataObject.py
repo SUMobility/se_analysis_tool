@@ -51,14 +51,14 @@ class CityBikesDataObject(SpatialDataObject):
             download_feed
         )
         df_citybikes_stations = gdf_citybikes_feeds_in_load_area.explode("stations", ignore_index=True)
+        df_citybikes_stations = df_citybikes_stations[df_citybikes_stations["stations"].apply(lambda x: isinstance(x, dict))]
         df_citybikes_stations["longitude"] = df_citybikes_stations["stations"].map(lambda x: x["longitude"]).copy()
         df_citybikes_stations["latitude"] = df_citybikes_stations["stations"].map(lambda x: x["latitude"]).copy()
         df_citybikes_stations["station_name"] = df_citybikes_stations["stations"].map(lambda x: x["name"]).copy()
         df_citybikes_stations["free_bikes"] = df_citybikes_stations["stations"].map(lambda x: x["free_bikes"]).copy()
         df_citybikes_stations["empty_slots"] = df_citybikes_stations["stations"].map(lambda x: x["empty_slots"]).copy()
-        df_citybikes_stations["has_ebikes"] = df_citybikes_stations["stations"].map(
-            lambda x: "unknown" if "has_ebikes" not in x["extra"] else x["extra"]["has_ebikes"]
-        ).copy()
+        df_citybikes_stations["has_ebikes"] = df_citybikes_stations["stations"].map(lambda x: "unknown" if "extra" not in x or "has_ebikes" not in x["extra"] else x["extra"]["has_ebikes"]
+    ).copy()
         df_citybikes_stations["capacity"] = df_citybikes_stations["empty_slots"] + df_citybikes_stations["free_bikes"]
         gdf_citybikes_stations = gpd.GeoDataFrame(
             df_citybikes_stations,

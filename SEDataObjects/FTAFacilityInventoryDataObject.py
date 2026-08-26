@@ -226,7 +226,7 @@ class FTAFacilityInventoryDataObject(SpatialDataObject):
         fta_geojson = folium.GeoJson(
             self._gdf,
             marker=basic_circle_marker(light_blue_color),
-            style_function = lambda _: {"radius": 3, "fillcolor": light_blue_color},
+            style_function = lambda _: {"radius": 6, "fillcolor": light_blue_color},
             popup=fta_popup
         )
         return fta_geojson
