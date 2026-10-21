@@ -9,6 +9,8 @@ First, add files to the `rawData` folder as follows:
   - The Geodatabase labeled "ESRI Geodatabase" from the [SLT page](https://www.epa.gov/smartgrowth/smart-location-mapping#Trans45)
 - FTA National Transit Database Facility Inventory
   - Download the Facility Inventory sheet linked [here](https://www.transit.dot.gov/ntd/data-product/2023-annual-database-facility-inventory). For different years, change the year in the URL
+- USDOT Fatality Analysis Reporting System (FARS) - Accidents
+  - Download the desired years of data from the linked site [here](https://geodata.bts.gov/datasets/usdot::fatality-analysis-reporting-system-fars-2024-accidents/about). For different years, change the year in the URL. 
 - National Laboratory of the Rockies (NLR AFDC)
   - This data is provided through an API, but a key is required. Please [register for a key on NLR's developer site](https://developer.nlr.gov/) and save it to a file in the `rawData` folder
 - TransitLand GTFS Feeds API
