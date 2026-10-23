@@ -21,8 +21,8 @@ PATH_BIKE_ALLOWED_USUALLY = ["cycleway", "path"]
 CYCLEWAY_TAG_TYPES = ["cycleway", "cycleway:left", "cycleway:right", "cycleway:both"]
 #TODO: handle bicycle_road, cyclestreet, bike routes, not sure how to do this though
 
-BIKE_FIELDS = ["cycleway", "highway", "paint_only"]
-BIKE_ALIASES = ["Cycleway Type", "Road Type", "Paint Only?"]
+BIKE_FIELDS = ["cycleway", "highway", "paint_only", "maxspeed"]
+BIKE_ALIASES = ["Cycleway Type", "Road Type", "Paint Only?", "OSM Speed Limit"]
 
 BIKE_SEARCH_TAGS = {
     "cycleway": PAINT_BIKE_LANE_TYPES + PROTECTED_BIKE_LANE_TYPES,
@@ -30,7 +30,7 @@ BIKE_SEARCH_TAGS = {
     "cycleway:left": PAINT_BIKE_LANE_TYPES + PROTECTED_BIKE_LANE_TYPES,
     "cycleway:right": PAINT_BIKE_LANE_TYPES + PROTECTED_BIKE_LANE_TYPES,
     "cycleway:both": PAINT_BIKE_LANE_TYPES + PROTECTED_BIKE_LANE_TYPES,
-    "ramp: bicycle": True,
+    "ramp:bicycle": True,
 }
 BIKE_COLORS = {
     "paint_only": "#1cff03",
@@ -82,6 +82,10 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
         for tag in BIKE_SEARCH_TAGS.keys():
             if tag not in gdf_osm_result:
                 gdf_osm_result[tag] = np.nan
+        if "maxspeed" not in gdf_osm_result.columns:
+            gdf_osm_result["maxspeed"] = np.nan
+        if "bicycle" not in gdf_osm_result.columns:
+            gdf_osm_result["bicycle"] = np.nan
         df_osm_processed_separated = pd.concat([
             gdf_osm_result.loc[ # Paths that usually include bikes and are not excluded
                 gdf_osm_result["highway"].isin(PATH_BIKE_ALLOWED_USUALLY) 
@@ -94,7 +98,7 @@ class OSMBikeStreetsDataObject(SpatialDataObject):
             *[gdf_osm_result.loc[ # Protected bike lanes (includes flexposts)
                 gdf_osm_result[cycleway_type].isin(PROTECTED_BIKE_LANE_TYPES)
             ] for cycleway_type in CYCLEWAY_TAG_TYPES],
-            gdf_osm_result.loc[gdf_osm_result["ramp: bicycle"] == "yes"]
+            gdf_osm_result.loc[gdf_osm_result["ramp:bicycle"] == "yes"]
         ])
         df_osm_processed_separated = df_osm_processed_separated[
             ~df_osm_processed_separated.index.duplicated(keep="first")
