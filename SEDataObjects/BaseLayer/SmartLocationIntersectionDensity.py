@@ -1,0 +1,7 @@
+from SEDataObjects.BaseLayer.constants import SMART_LOCATION_INTERSECTION_DENSITY, SMART_LOCATION_INTERSECTION_DENSITY_NAME
+from SEDataObjects.BaseLayer.entities import BaseLayerSmartLocation
+
+
+class SmartLocationIntersectionDensity(BaseLayerSmartLocation):
+    metric_field_id = SMART_LOCATION_INTERSECTION_DENSITY
+    metric_alias = SMART_LOCATION_INTERSECTION_DENSITY_NAME
